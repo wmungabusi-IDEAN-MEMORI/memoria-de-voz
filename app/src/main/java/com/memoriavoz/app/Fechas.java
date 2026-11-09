@@ -14,6 +14,25 @@ public final class Fechas {
 
     private Fechas() {}
 
+    public static String repeticion(int repite) {
+        switch (repite) {
+            case ParserFechas.REPITE_DIA: return "Todos los días";
+            case ParserFechas.REPITE_SEMANA: return "Cada semana";
+            case ParserFechas.REPITE_MES: return "Cada mes";
+            case ParserFechas.REPITE_ANIO: return "Cada año";
+            default: return "";
+        }
+    }
+
+    public static String hoyLargo(LocalDate d) {
+        String s = d.format(LARGA);
+        return s.substring(0, 1).toUpperCase(ES) + s.substring(1);
+    }
+
+    public static String mesCorto(LocalDate d) {
+        return d.format(DateTimeFormatter.ofPattern("MMM", ES)).replace(".", "").toUpperCase(ES);
+    }
+
     public static String hora(LocalTime t) {
         int h24 = t.getHour();
         int h = h24 % 12 == 0 ? 12 : h24 % 12;

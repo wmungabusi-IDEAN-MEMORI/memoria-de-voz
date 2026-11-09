@@ -1,18 +1,24 @@
 package com.memoriavoz.app;
 
 import android.Manifest;
+import android.animation.AnimatorSet;
+import android.animation.ObjectAnimator;
+import android.animation.ValueAnimator;
 import android.app.Activity;
-import android.app.AlertDialog;
 import android.app.DatePickerDialog;
+import android.app.Dialog;
 import android.app.TimePickerDialog;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.graphics.Typeface;
+import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.os.PowerManager;
 import android.provider.Settings;
 import android.speech.RecognitionListener;
@@ -24,94 +30,232 @@ import android.text.TextWatcher;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.Window;
+import android.view.WindowManager;
 import android.widget.Button;
-import android.widget.CheckBox;
 import android.widget.EditText;
+import android.widget.FrameLayout;
+import android.widget.HorizontalScrollView;
+import android.widget.ImageButton;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
+import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 
 public class MainActivity extends Activity {
-    private static final int FONDO = Color.rgb(245, 243, 238);
-    private static final int TINTA = Color.rgb(31, 41, 51);
-    private static final int SUAVE = Color.rgb(102, 112, 122);
-    private static final int ACENTO = Color.rgb(15, 118, 110);
-    private static final int ALERTA = Color.rgb(190, 60, 45);
+    public static final String ACCION_NUEVA = "com.memoriavoz.app.NUEVA";
     private static final int REQ_MIC = 10;
     private static final int REQ_NOTIF = 11;
+    private static final int MP = ViewGroup.LayoutParams.MATCH_PARENT;
+    private static final int WC = ViewGroup.LayoutParams.WRAP_CONTENT;
 
+    private final Handler handler = new Handler(Looper.getMainLooper());
+    private Tema t;
     private SpeechRecognizer reconocedor;
     private boolean escuchando;
     private boolean probeRespaldo;
-    private TextView microfono;
+    private boolean verPasados;
+    private String filtro = "";
+    private View anillo;
+    private ImageView microfono;
+    private AnimatorSet pulso;
     private TextView estado;
+    private TextView resumen;
     private LinearLayout lista;
     private LinearLayout avisoBateria;
-    private String filtro = "";
+    private FrameLayout raizMarco;
+    private View barraDeshacer;
 
     private int dp(int v) {
-        return Math.round(v * getResources().getDisplayMetrics().density);
+        return t.dp(v);
     }
 
     @Override
     protected void onCreate(Bundle guardado) {
         super.onCreate(guardado);
+        t = new Tema(this);
         Alarmas.crearCanales(this);
 
+        raizMarco = new FrameLayout(this);
         ScrollView scroll = new ScrollView(this);
-        scroll.setBackgroundColor(FONDO);
+        scroll.setBackgroundColor(t.fondo);
         scroll.setFillViewport(true);
         LinearLayout raiz = new LinearLayout(this);
         raiz.setOrientation(LinearLayout.VERTICAL);
-        raiz.setPadding(dp(20), dp(28), dp(20), dp(32));
+        raiz.setPadding(dp(20), dp(24), dp(20), dp(96));
         scroll.addView(raiz);
+        raizMarco.addView(scroll);
 
-        TextView titulo = texto("Memoria de Voz", 28, TINTA);
+        raiz.addView(texto(Fechas.hoyLargo(LocalDate.now()), 14, t.suave));
+        TextView titulo = texto("Memoria de Voz", 30, t.tinta);
         titulo.setTypeface(Typeface.DEFAULT_BOLD);
         raiz.addView(titulo);
+        resumen = texto("", 15, t.acento);
+        resumen.setPadding(0, dp(2), 0, 0);
+        raiz.addView(resumen);
 
         avisoBateria = new LinearLayout(this);
         avisoBateria.setOrientation(LinearLayout.VERTICAL);
         raiz.addView(avisoBateria);
 
-        microfono = new TextView(this);
-        microfono.setText("🎙");
-        microfono.setTextSize(52);
-        microfono.setGravity(Gravity.CENTER);
-        microfono.setContentDescription("Grabar nota de voz");
-        LinearLayout.LayoutParams lpMic = new LinearLayout.LayoutParams(dp(136), dp(136));
-        lpMic.gravity = Gravity.CENTER_HORIZONTAL;
-        lpMic.topMargin = dp(26);
-        raiz.addView(microfono, lpMic);
-        microfono.setOnClickListener(v -> alternarEscucha());
-        pintarMicrofono();
+        raiz.addView(crearMicrofono());
 
-        estado = texto("Toca y dime qué debo recordar.\nEjemplo: «Reunión con Juan mañana a las 3 de la tarde»", 15, SUAVE);
+        estado = texto("Toca el micrófono y dime qué debo recordar", 16, t.suave);
         estado.setGravity(Gravity.CENTER);
-        estado.setPadding(0, dp(14), 0, dp(6));
+        estado.setPadding(dp(8), dp(2), dp(8), dp(2));
         raiz.addView(estado);
 
         Button escribir = new Button(this);
         escribir.setText("Prefiero escribirlo");
         escribir.setAllCaps(false);
         escribir.setBackgroundColor(Color.TRANSPARENT);
-        escribir.setTextColor(ACENTO);
+        escribir.setStateListAnimator(null);
+        escribir.setTextColor(t.acento);
         escribir.setOnClickListener(v -> pedirTexto());
         raiz.addView(escribir);
 
+        raiz.addView(crearBuscador());
+
+        lista = new LinearLayout(this);
+        lista.setOrientation(LinearLayout.VERTICAL);
+        raiz.addView(lista);
+
+        setContentView(raizMarco);
+        pedirPermisoNotificaciones();
+        atenderIntent(getIntent());
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        atenderIntent(intent);
+    }
+
+    private void atenderIntent(Intent intent) {
+        if (intent != null && ACCION_NUEVA.equals(intent.getAction())) {
+            intent.setAction(Intent.ACTION_MAIN);
+            handler.postDelayed(() -> {
+                if (!escuchando) alternarEscucha();
+            }, 350);
+        }
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        Alarmas.reprogramarTodo(this);
+        pintarAvisoBateria();
+        pintarLista();
+    }
+
+    @Override
+    protected void onDestroy() {
+        handler.removeCallbacksAndMessages(null);
+        detenerPulso();
+        if (reconocedor != null) reconocedor.destroy();
+        super.onDestroy();
+    }
+
+    private TextView texto(String s, int sp, int color) {
+        TextView v = new TextView(this);
+        v.setText(s);
+        v.setTextSize(sp);
+        v.setTextColor(color);
+        return v;
+    }
+
+    private View crearMicrofono() {
+        FrameLayout c = new FrameLayout(this);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(dp(210), dp(210));
+        lp.gravity = Gravity.CENTER_HORIZONTAL;
+        lp.topMargin = dp(4);
+        c.setLayoutParams(lp);
+
+        anillo = new View(this);
+        anillo.setBackground(t.circulo(t.tenue));
+        FrameLayout.LayoutParams lpA = new FrameLayout.LayoutParams(dp(150), dp(150), Gravity.CENTER);
+        c.addView(anillo, lpA);
+
+        microfono = new ImageView(this);
+        microfono.setImageResource(R.drawable.ic_mic);
+        microfono.setImageTintList(t.lista(t.sobreAcento));
+        microfono.setPadding(dp(36), dp(36), dp(36), dp(36));
+        microfono.setElevation(dp(6));
+        microfono.setContentDescription("Grabar nota de voz");
+        microfono.setClickable(true);
+        microfono.setFocusable(true);
+        microfono.setOnClickListener(v -> alternarEscucha());
+        c.addView(microfono, new FrameLayout.LayoutParams(dp(140), dp(140), Gravity.CENTER));
+        pintarMicrofono();
+        return c;
+    }
+
+    private void pintarMicrofono() {
+        microfono.setBackground(t.circulo(escuchando ? t.alerta : t.acento));
+        microfono.setContentDescription(escuchando ? "Terminar de grabar" : "Grabar nota de voz");
+        if (escuchando) iniciarPulso();
+        else detenerPulso();
+    }
+
+    private void iniciarPulso() {
+        detenerPulso();
+        ObjectAnimator x = ObjectAnimator.ofFloat(anillo, View.SCALE_X, 1f, 1.38f);
+        ObjectAnimator y = ObjectAnimator.ofFloat(anillo, View.SCALE_Y, 1f, 1.38f);
+        ObjectAnimator a = ObjectAnimator.ofFloat(anillo, View.ALPHA, 1f, 0.15f);
+        for (ObjectAnimator o : new ObjectAnimator[]{x, y, a}) {
+            o.setRepeatCount(ValueAnimator.INFINITE);
+            o.setRepeatMode(ValueAnimator.REVERSE);
+            o.setDuration(650);
+        }
+        pulso = new AnimatorSet();
+        pulso.playTogether(x, y, a);
+        pulso.start();
+    }
+
+    private void detenerPulso() {
+        if (pulso != null) pulso.cancel();
+        pulso = null;
+        if (anillo != null) {
+            anillo.setScaleX(1f);
+            anillo.setScaleY(1f);
+            anillo.setAlpha(1f);
+        }
+    }
+
+    private View crearBuscador() {
+        LinearLayout c = new LinearLayout(this);
+        c.setGravity(Gravity.CENTER_VERTICAL);
+        c.setBackground(t.redondo(t.tarjeta, 14));
+        c.setPadding(dp(14), 0, dp(14), 0);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(MP, dp(52));
+        lp.topMargin = dp(8);
+        c.setLayoutParams(lp);
+
+        ImageView lupa = new ImageView(this);
+        lupa.setImageResource(R.drawable.ic_buscar);
+        lupa.setImageTintList(t.lista(t.suave));
+        c.addView(lupa, new LinearLayout.LayoutParams(dp(22), dp(22)));
+
         EditText buscar = new EditText(this);
         buscar.setHint("Buscar en mi memoria");
+        buscar.setHintTextColor(t.suave);
         buscar.setSingleLine(true);
-        buscar.setTextColor(TINTA);
+        buscar.setTextColor(t.tinta);
+        buscar.setTextSize(16);
+        buscar.setBackgroundColor(Color.TRANSPARENT);
+        buscar.setPadding(dp(10), 0, 0, 0);
         buscar.addTextChangedListener(new TextWatcher() {
             @Override
             public void beforeTextChanged(CharSequence s, int a, int b, int c) {}
@@ -125,44 +269,8 @@ public class MainActivity extends Activity {
                 pintarLista();
             }
         });
-        raiz.addView(buscar);
-
-        lista = new LinearLayout(this);
-        lista.setOrientation(LinearLayout.VERTICAL);
-        raiz.addView(lista);
-
-        setContentView(scroll);
-        pedirPermisoNotificaciones();
-    }
-
-    @Override
-    protected void onResume() {
-        super.onResume();
-        Alarmas.reprogramarTodo(this);
-        pintarAvisoBateria();
-        pintarLista();
-    }
-
-    @Override
-    protected void onDestroy() {
-        if (reconocedor != null) reconocedor.destroy();
-        super.onDestroy();
-    }
-
-    private TextView texto(String s, int sp, int color) {
-        TextView t = new TextView(this);
-        t.setText(s);
-        t.setTextSize(sp);
-        t.setTextColor(color);
-        return t;
-    }
-
-    private void pintarMicrofono() {
-        GradientDrawable g = new GradientDrawable();
-        g.setShape(GradientDrawable.OVAL);
-        g.setColor(escuchando ? ALERTA : ACENTO);
-        microfono.setBackground(g);
-        microfono.setElevation(dp(5));
+        c.addView(buscar, new LinearLayout.LayoutParams(0, MP, 1f));
+        return c;
     }
 
     private void pedirPermisoNotificaciones() {
@@ -176,19 +284,48 @@ public class MainActivity extends Activity {
         avisoBateria.removeAllViews();
         PowerManager pm = getSystemService(PowerManager.class);
         if (pm.isIgnoringBatteryOptimizations(getPackageName())) return;
-        TextView t = texto("Para que los avisos suenen con el celular en reposo, permite que la app funcione sin"
-                + " restricción de batería.", 14, TINTA);
-        t.setPadding(0, dp(14), 0, dp(4));
-        Button b = new Button(this);
-        b.setText("Permitir");
-        b.setAllCaps(false);
-        b.setOnClickListener(v -> {
+        LinearLayout c = new LinearLayout(this);
+        c.setOrientation(LinearLayout.VERTICAL);
+        c.setBackground(t.redondo(t.tenue, 14));
+        c.setPadding(dp(14), dp(12), dp(14), dp(12));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(MP, WC);
+        lp.topMargin = dp(14);
+        c.setLayoutParams(lp);
+        c.addView(texto("Para que los avisos suenen con el celular en reposo, permite que la app funcione sin"
+                + " restricción de batería.", 14, t.tinta));
+        Button b = botonLleno("Permitir", v -> {
             Intent i = new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS);
             i.setData(Uri.parse("package:" + getPackageName()));
             startActivity(i);
         });
-        avisoBateria.addView(t);
-        avisoBateria.addView(b);
+        LinearLayout.LayoutParams lpB = new LinearLayout.LayoutParams(WC, dp(44));
+        lpB.topMargin = dp(10);
+        b.setLayoutParams(lpB);
+        c.addView(b);
+        avisoBateria.addView(c);
+    }
+
+    private Button botonLleno(String s, View.OnClickListener accion) {
+        Button b = new Button(this);
+        b.setText(s);
+        b.setAllCaps(false);
+        b.setTextColor(t.sobreAcento);
+        b.setBackground(t.redondo(t.acento, 12));
+        b.setStateListAnimator(null);
+        b.setPadding(dp(20), 0, dp(20), 0);
+        b.setOnClickListener(accion);
+        return b;
+    }
+
+    private Button botonTexto(String s, int color, View.OnClickListener accion) {
+        Button b = new Button(this);
+        b.setText(s);
+        b.setAllCaps(false);
+        b.setTextColor(color);
+        b.setBackgroundColor(Color.TRANSPARENT);
+        b.setStateListAnimator(null);
+        b.setOnClickListener(accion);
+        return b;
     }
 
     private void alternarEscucha() {
@@ -294,8 +431,8 @@ public class MainActivity extends Activity {
                 estado.setText("No te escuché bien. Toca e inténtalo otra vez.");
                 return;
             }
-            estado.setText("Toca para agregar otro recordatorio.");
-            abrirAnalizado(r.get(0));
+            estado.setText("Toca el micrófono para agregar otro");
+            abrirAnalizado(r.get(0), true);
         }
 
         @Override
@@ -308,254 +445,436 @@ public class MainActivity extends Activity {
         public void onEvent(int tipo, Bundle datos) {}
     }
 
-    private void pedirTexto() {
-        EditText e = new EditText(this);
-        e.setHint("Ej.: pagar la luz el viernes a las 10");
-        e.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE
-                | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
-        new AlertDialog.Builder(this)
-                .setTitle("Escribe qué debo recordar")
-                .setView(conMargen(e))
-                .setNegativeButton("Cancelar", null)
-                .setPositiveButton("Continuar", (d, w) -> {
-                    String s = e.getText().toString().trim();
-                    if (!s.isEmpty()) abrirAnalizado(s);
-                })
-                .show();
+    private Dialog hoja(View contenido) {
+        Dialog d = new Dialog(this);
+        d.requestWindowFeature(Window.FEATURE_NO_TITLE);
+        ScrollView s = new ScrollView(this);
+        s.addView(contenido);
+        GradientDrawable g = new GradientDrawable();
+        g.setColor(t.tarjeta);
+        float r = dp(22);
+        g.setCornerRadii(new float[]{r, r, r, r, 0, 0, 0, 0});
+        s.setBackground(g);
+        d.setContentView(s);
+        return d;
     }
 
-    private View conMargen(View v) {
+    private void mostrarHoja(Dialog d) {
+        d.show();
+        Window w = d.getWindow();
+        w.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+        w.setLayout(MP, WC);
+        w.setGravity(Gravity.BOTTOM);
+        w.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
+    }
+
+    private LinearLayout cuerpoHoja(String titulo) {
         LinearLayout c = new LinearLayout(this);
-        c.setPadding(dp(22), dp(10), dp(22), 0);
-        c.addView(v, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT));
+        c.setOrientation(LinearLayout.VERTICAL);
+        c.setPadding(dp(20), dp(22), dp(20), dp(16));
+        TextView v = texto(titulo, 21, t.tinta);
+        v.setTypeface(Typeface.DEFAULT_BOLD);
+        v.setPadding(0, 0, 0, dp(12));
+        c.addView(v);
         return c;
     }
 
-    private void abrirAnalizado(String dicho) {
-        ParserFechas.Resultado p = ParserFechas.analizar(dicho, LocalDateTime.now());
-        abrirEditor(null, p.texto, p.fecha, p.hora);
+    private EditText campo(String textoIni, String pista) {
+        EditText e = new EditText(this);
+        e.setText(textoIni);
+        e.setHint(pista);
+        e.setHintTextColor(t.suave);
+        e.setTextColor(t.tinta);
+        e.setTextSize(18);
+        e.setBackground(t.redondo(t.fondo, 14));
+        e.setPadding(dp(14), dp(14), dp(14), dp(14));
+        e.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE
+                | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
+        return e;
     }
 
-    /** Pantalla de revisión: aquí se corrige lo que el celular haya entendido mal. */
-    private void abrirEditor(Recordatorio existente, String textoInicial, LocalDate fechaIni, LocalTime horaIni) {
+    private LinearLayout filaAcciones(String etiqueta, View.OnClickListener cancelar, View.OnClickListener aceptar) {
+        LinearLayout f = new LinearLayout(this);
+        f.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
+        f.setPadding(0, dp(14), 0, 0);
+        f.addView(botonTexto("Cancelar", t.suave, cancelar));
+        Button a = botonLleno(etiqueta, aceptar);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(WC, dp(50));
+        lp.leftMargin = dp(8);
+        f.addView(a, lp);
+        return f;
+    }
+
+    private void pedirTexto() {
+        LinearLayout c = cuerpoHoja("¿Qué debo recordar?");
+        EditText e = campo("", "Ej.: pagar la luz el viernes a las 10");
+        c.addView(e);
+        Dialog d = hoja(c);
+        c.addView(filaAcciones("Continuar", v -> d.dismiss(), v -> {
+            String s = e.getText().toString().trim();
+            if (s.isEmpty()) return;
+            d.dismiss();
+            abrirAnalizado(s, false);
+        }));
+        mostrarHoja(d);
+    }
+
+    private void abrirAnalizado(String dicho, boolean porVoz) {
+        ParserFechas.Resultado p = ParserFechas.analizar(dicho, LocalDateTime.now());
+        abrirEditor(null, p.texto, p.fecha, p.hora, p.repite, porVoz);
+    }
+
+    private TextView etiquetaSeccion(String s) {
+        TextView v = texto(s, 13, t.suave);
+        v.setPadding(0, dp(16), 0, dp(6));
+        return v;
+    }
+
+    private TextView chip(String s, boolean activo, View.OnClickListener accion) {
+        TextView v = texto(s, 14, activo ? t.sobreAcento : t.tinta);
+        v.setGravity(Gravity.CENTER);
+        v.setBackground(t.redondo(activo ? t.acento : t.fondo, 20));
+        v.setPadding(dp(14), 0, dp(14), 0);
+        v.setClickable(true);
+        v.setFocusable(true);
+        v.setOnClickListener(accion);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(WC, dp(44));
+        lp.rightMargin = dp(8);
+        v.setLayoutParams(lp);
+        return v;
+    }
+
+    private Switch interruptor(String s, boolean activo) {
+        Switch w = new Switch(this);
+        w.setText(s);
+        w.setTextSize(15);
+        w.setTextColor(t.tinta);
+        w.setChecked(activo);
+        w.setMinHeight(dp(46));
+        return w;
+    }
+
+    /** Hoja de revisión: aquí se corrige lo que el celular haya entendido mal. */
+    private void abrirEditor(Recordatorio existente, String textoInicial, LocalDate fechaIni, LocalTime horaIni,
+                             int repiteIni, boolean porVoz) {
         final LocalDate[] fecha = {fechaIni};
         final LocalTime[] hora = {horaIni};
+        final int[] repite = {repiteIni};
 
-        LinearLayout c = new LinearLayout(this);
-        c.setOrientation(LinearLayout.VERTICAL);
-        c.setPadding(dp(22), dp(10), dp(22), 0);
+        LinearLayout c = cuerpoHoja("Revisa lo que entendí");
+        EditText texto = campo(textoInicial, "Qué debo recordar");
+        c.addView(texto);
 
-        EditText campo = new EditText(this);
-        campo.setText(textoInicial);
-        campo.setTextColor(TINTA);
-        campo.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE
-                | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
-        c.addView(campo);
+        c.addView(etiquetaSeccion("Cuándo"));
+        LinearLayout rapidas = new LinearLayout(this);
+        c.addView(rapidas);
+        Button bFecha = botonSuave();
+        Button bHora = botonSuave();
+        LinearLayout pares = new LinearLayout(this);
+        pares.setPadding(0, dp(8), 0, 0);
+        LinearLayout.LayoutParams lpF = new LinearLayout.LayoutParams(0, dp(50), 1f);
+        lpF.rightMargin = dp(8);
+        pares.addView(bFecha, lpF);
+        pares.addView(bHora, new LinearLayout.LayoutParams(0, dp(50), 1f));
+        c.addView(pares);
 
-        Button bFecha = new Button(this);
-        Button bHora = new Button(this);
-        bFecha.setAllCaps(false);
-        bHora.setAllCaps(false);
-        CheckBox cDia = new CheckBox(this);
-        CheckBox cMismo = new CheckBox(this);
-        CheckBox cExacta = new CheckBox(this);
-        cDia.setText("Avisarme un día antes");
-        cExacta.setText("Avisarme también a la hora exacta");
-        cDia.setChecked(existente == null || existente.diaAntes);
-        cMismo.setChecked(existente == null || existente.mismoDia);
-        cExacta.setChecked(existente != null && existente.exacta);
+        TextView tRepite = etiquetaSeccion("Repetir");
+        c.addView(tRepite);
+        HorizontalScrollView scrollRep = new HorizontalScrollView(this);
+        scrollRep.setHorizontalScrollBarEnabled(false);
+        LinearLayout filaRep = new LinearLayout(this);
+        scrollRep.addView(filaRep);
+        c.addView(scrollRep);
 
-        Runnable refrescar = () -> {
-            bFecha.setText(fecha[0] == null ? "Sin fecha: solo guardar (toca para elegir)"
-                    : "Fecha: " + Fechas.dia(fecha[0], LocalDate.now()));
-            bHora.setText(hora[0] == null ? "Sin hora (te aviso a las 9 de la mañana)"
-                    : "Hora: " + Fechas.hora(hora[0]));
-            cMismo.setText(hora[0] == null ? "Avisarme el mismo día" : "Avisarme el mismo día, una hora antes");
+        TextView tAvisos = etiquetaSeccion("Avisarme");
+        c.addView(tAvisos);
+        Switch sDia = interruptor("Un día antes", existente == null || existente.diaAntes);
+        Switch sMismo = interruptor("El mismo día", existente == null || existente.mismoDia);
+        Switch sExacta = interruptor("A la hora exacta", existente != null && existente.exacta);
+        c.addView(sDia);
+        c.addView(sMismo);
+        c.addView(sExacta);
+
+        final Runnable[] refrescar = new Runnable[1];
+        refrescar[0] = () -> {
+            LocalDate hoy = LocalDate.now();
+            rapidas.removeAllViews();
+            rapidas.addView(chip("Hoy", hoy.equals(fecha[0]), v -> {
+                fecha[0] = hoy;
+                refrescar[0].run();
+            }));
+            rapidas.addView(chip("Mañana", hoy.plusDays(1).equals(fecha[0]), v -> {
+                fecha[0] = hoy.plusDays(1);
+                refrescar[0].run();
+            }));
+            rapidas.addView(chip("Sin fecha", fecha[0] == null, v -> {
+                fecha[0] = null;
+                hora[0] = null;
+                repite[0] = ParserFechas.REPITE_NO;
+                refrescar[0].run();
+            }));
+
+            filaRep.removeAllViews();
+            String[] nombres = {"No", "Diario", "Semanal", "Mensual", "Anual"};
+            for (int i = 0; i < nombres.length; i++) {
+                final int valor = i;
+                filaRep.addView(chip(nombres[i], repite[0] == valor, v -> {
+                    repite[0] = valor;
+                    refrescar[0].run();
+                }));
+            }
+
+            bFecha.setText(fecha[0] == null ? "Elegir fecha" : Fechas.dia(fecha[0], hoy));
+            bHora.setText(hora[0] == null ? "Sin hora (9 a. m.)" : Fechas.hora(hora[0]));
+            sMismo.setText(hora[0] == null ? "El mismo día" : "El mismo día, una hora antes");
             int v = fecha[0] == null ? View.GONE : View.VISIBLE;
             bHora.setVisibility(v);
-            cDia.setVisibility(v);
-            cMismo.setVisibility(v);
-            cExacta.setVisibility(hora[0] == null ? View.GONE : v);
+            tRepite.setVisibility(v);
+            scrollRep.setVisibility(v);
+            tAvisos.setVisibility(v);
+            sDia.setVisibility(v);
+            sMismo.setVisibility(v);
+            sExacta.setVisibility(hora[0] == null ? View.GONE : v);
         };
 
         bFecha.setOnClickListener(v -> {
             LocalDate d = fecha[0] != null ? fecha[0] : LocalDate.now();
             new DatePickerDialog(this, (vista, a, m, dia) -> {
                 fecha[0] = LocalDate.of(a, m + 1, dia);
-                refrescar.run();
+                refrescar[0].run();
             }, d.getYear(), d.getMonthValue() - 1, d.getDayOfMonth()).show();
         });
         bHora.setOnClickListener(v -> {
-            LocalTime t = hora[0] != null ? hora[0] : LocalTime.of(9, 0);
-            new TimePickerDialog(this, (vista, h, min) -> {
-                hora[0] = LocalTime.of(h, min);
-                refrescar.run();
-            }, t.getHour(), t.getMinute(), false).show();
+            LocalTime h = hora[0] != null ? hora[0] : LocalTime.of(9, 0);
+            new TimePickerDialog(this, (vista, hh, min) -> {
+                hora[0] = LocalTime.of(hh, min);
+                refrescar[0].run();
+            }, h.getHour(), h.getMinute(), false).show();
         });
+        refrescar[0].run();
 
-        c.addView(bFecha);
-        c.addView(bHora);
-        c.addView(cDia);
-        c.addView(cMismo);
-        c.addView(cExacta);
-        refrescar.run();
-
-        ScrollView s = new ScrollView(this);
-        s.addView(c);
-
-        AlertDialog.Builder b = new AlertDialog.Builder(this)
-                .setTitle("Revisa lo que entendí")
-                .setView(s)
-                .setNegativeButton("Cancelar", null)
-                .setPositiveButton("Guardar", null);
-        if (fechaIni != null || existente != null) {
-            b.setNeutralButton("Quitar fecha", null);
-        }
-        AlertDialog dialogo = b.create();
-        dialogo.setOnShowListener(x -> {
-            Button neutro = dialogo.getButton(AlertDialog.BUTTON_NEUTRAL);
-            if (neutro != null) {
-                neutro.setOnClickListener(v -> {
-                    fecha[0] = null;
-                    hora[0] = null;
-                    refrescar.run();
-                });
+        Dialog d = hoja(c);
+        c.addView(filaAcciones("Guardar", v -> d.dismiss(), v -> {
+            String s = texto.getText().toString().trim();
+            if (s.isEmpty()) {
+                texto.setError("Escribe algo para guardar");
+                return;
             }
-            dialogo.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
-                String t = campo.getText().toString().trim();
-                if (t.isEmpty()) {
-                    campo.setError("Escribe algo para guardar");
-                    return;
-                }
-                if (guardar(existente, t, fecha[0], hora[0], cDia.isChecked(), cMismo.isChecked(),
-                        cExacta.isChecked())) {
-                    dialogo.dismiss();
-                }
-            });
-        });
-        dialogo.show();
+            if (guardar(existente, s, fecha[0], hora[0], repite[0], sDia.isChecked(), sMismo.isChecked(),
+                    sExacta.isChecked(), porVoz)) {
+                d.dismiss();
+            }
+        }));
+        mostrarHoja(d);
     }
 
-    private boolean guardar(Recordatorio existente, String t, LocalDate f, LocalTime h, boolean dia, boolean mismo,
-                            boolean exacta) {
+    private Button botonSuave() {
+        Button b = new Button(this);
+        b.setAllCaps(false);
+        b.setTextColor(t.tinta);
+        b.setTextSize(14);
+        b.setBackground(t.redondo(t.tenue, 12));
+        b.setStateListAnimator(null);
+        return b;
+    }
+
+    private boolean guardar(Recordatorio existente, String texto, LocalDate f, LocalTime h, int repite, boolean dia,
+                            boolean mismo, boolean exacta, boolean porVoz) {
         long ahora = System.currentTimeMillis();
-        long evento = 0;
-        if (f != null) {
-            LocalDateTime ev = f.atTime(h != null ? h : LocalTime.of(9, 0));
-            evento = Recordatorio.aMillis(ev);
-            if (evento <= ahora) {
-                Toast.makeText(this, "Esa fecha y hora ya pasaron. Elige otra.", Toast.LENGTH_LONG).show();
-                return false;
-            }
-        }
         Recordatorio r = new Recordatorio();
         r.id = existente != null ? existente.id : ahora;
-        r.texto = t;
-        r.evento = evento;
+        r.texto = texto;
+        r.creado = ahora;
         r.conHora = f != null && h != null;
         r.diaAntes = dia;
         r.mismoDia = mismo;
         r.exacta = exacta && h != null;
-        r.creado = ahora;
-        r.ultimoAviso = 0;
-        if (f != null && !r.diaAntes && !r.mismoDia && !r.exacta) r.exacta = true;
+        if (f != null) {
+            r.repite = repite;
+            r.diaBase = f.getDayOfMonth();
+            r.evento = Recordatorio.aMillis(f.atTime(h != null ? h : LocalTime.of(9, 0)));
+            if (!r.diaAntes && !r.mismoDia && !r.exacta) r.exacta = true;
+            if (r.evento <= ahora) {
+                if (r.repite == ParserFechas.REPITE_NO) {
+                    Toast.makeText(this, "Esa fecha y hora ya pasaron. Elige otra.", Toast.LENGTH_LONG).show();
+                    return false;
+                }
+                r.avanzarRepeticion(ahora);
+            }
+        }
         Almacen.guardar(this, r);
         Alarmas.programar(this, r);
         Toast.makeText(this, f == null ? "Guardado en tu memoria" : "Listo, te avisaré", Toast.LENGTH_SHORT).show();
         pintarLista();
+        if (porVoz) {
+            String frase = f == null ? "Guardado en tu memoria."
+                    : "Listo. Te aviso sobre esto para " + Alarmas.cuando(r) + ".";
+            try {
+                startForegroundService(Alarmas.intentVoz(this, r.id, 1, frase));
+            } catch (RuntimeException e) {
+                android.util.Log.e("MemoriaVoz", "No se pudo confirmar por voz", e);
+            }
+        }
         return true;
     }
 
     private void pintarLista() {
         lista.removeAllViews();
         long ahora = System.currentTimeMillis();
-        List<Recordatorio> proximos = new ArrayList<>();
+        LocalDate hoy = LocalDate.now();
+        List<Recordatorio> deHoy = new ArrayList<>();
+        List<Recordatorio> deManana = new ArrayList<>();
+        List<Recordatorio> semana = new ArrayList<>();
+        List<Recordatorio> despues = new ArrayList<>();
         List<Recordatorio> notas = new ArrayList<>();
         List<Recordatorio> pasados = new ArrayList<>();
+        int totalHoy = 0;
         for (Recordatorio r : Almacen.todos(this)) {
-            if (!filtro.isEmpty() && !r.texto.toLowerCase(Locale.ROOT).contains(filtro)) continue;
-            if (!r.tieneFecha()) notas.add(r);
-            else if (r.evento >= ahora) proximos.add(r);
-            else pasados.add(r);
+            boolean coincide = filtro.isEmpty() || r.texto.toLowerCase(Locale.ROOT).contains(filtro);
+            if (r.tieneFecha() && r.evento >= ahora && r.fechaEvento().toLocalDate().equals(hoy)) totalHoy++;
+            if (!coincide) continue;
+            if (!r.tieneFecha()) {
+                notas.add(r);
+            } else if (r.evento < ahora) {
+                pasados.add(r);
+            } else {
+                long d = ChronoUnit.DAYS.between(hoy, r.fechaEvento().toLocalDate());
+                (d == 0 ? deHoy : d == 1 ? deManana : d <= 7 ? semana : despues).add(r);
+            }
         }
-        proximos.sort(Comparator.comparingLong((Recordatorio r) -> r.evento));
+        resumen.setText(totalHoy == 0 ? "Nada pendiente para hoy"
+                : totalHoy == 1 ? "Tienes 1 recordatorio hoy" : "Tienes " + totalHoy + " recordatorios hoy");
+
+        Comparator<Recordatorio> porFecha = Comparator.comparingLong((Recordatorio r) -> r.evento);
+        for (List<Recordatorio> l : List.of(deHoy, deManana, semana, despues)) l.sort(porFecha);
         notas.sort(Comparator.comparingLong((Recordatorio r) -> -r.creado));
         pasados.sort(Comparator.comparingLong((Recordatorio r) -> -r.evento));
 
-        seccion("Próximos", proximos);
+        seccion("Hoy", deHoy);
+        seccion("Mañana", deManana);
+        seccion("Próximos 7 días", semana);
+        seccion("Más adelante", despues);
         seccion("Información guardada", notas);
-        seccion("Pasados", pasados.size() > 30 ? pasados.subList(0, 30) : pasados);
+        if (!pasados.isEmpty()) {
+            Button b = botonTexto((verPasados ? "Ocultar pasados" : "Ver pasados") + " (" + pasados.size() + ")",
+                    t.suave, v -> {
+                        verPasados = !verPasados;
+                        pintarLista();
+                    });
+            lista.addView(b);
+            if (verPasados) {
+                for (Recordatorio r : pasados.size() > 30 ? pasados.subList(0, 30) : pasados) lista.addView(tarjeta(r));
+            }
+        }
 
-        if (proximos.isEmpty() && notas.isEmpty() && pasados.isEmpty()) {
+        if (lista.getChildCount() == 0) {
             TextView v = texto(filtro.isEmpty() ? "Todavía no has guardado nada." : "No encontré nada con esa palabra.",
-                    15, SUAVE);
+                    15, t.suave);
             v.setGravity(Gravity.CENTER);
-            v.setPadding(0, dp(24), 0, 0);
+            v.setPadding(0, dp(28), 0, 0);
             lista.addView(v);
         }
     }
 
     private void seccion(String nombre, List<Recordatorio> items) {
         if (items.isEmpty()) return;
-        TextView t = texto(nombre, 17, TINTA);
-        t.setTypeface(Typeface.DEFAULT_BOLD);
-        t.setPadding(0, dp(20), 0, dp(6));
-        lista.addView(t);
+        TextView v = texto(nombre, 17, t.tinta);
+        v.setTypeface(Typeface.DEFAULT_BOLD);
+        v.setPadding(0, dp(22), 0, dp(8));
+        lista.addView(v);
         for (Recordatorio r : items) lista.addView(tarjeta(r));
     }
 
     private View tarjeta(Recordatorio r) {
         LinearLayout c = new LinearLayout(this);
-        c.setOrientation(LinearLayout.VERTICAL);
-        c.setPadding(dp(14), dp(12), dp(10), dp(4));
-        GradientDrawable g = new GradientDrawable();
-        g.setColor(Color.WHITE);
-        g.setCornerRadius(dp(12));
-        c.setBackground(g);
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT);
+        c.setGravity(Gravity.CENTER_VERTICAL);
+        c.setPadding(dp(12), dp(10), dp(4), dp(10));
+        c.setBackground(t.redondo(t.tarjeta, 16));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(MP, WC);
         lp.bottomMargin = dp(10);
         c.setLayoutParams(lp);
-
-        c.addView(texto(r.texto, 16, TINTA));
-        if (r.tieneFecha()) {
-            TextView f = texto(Fechas.completa(r.fechaEvento(), r.conHora, LocalDate.now()), 14, ACENTO);
-            f.setPadding(0, dp(4), 0, 0);
-            c.addView(f);
-        }
-
-        LinearLayout botones = new LinearLayout(this);
-        botones.setGravity(Gravity.END);
-        botones.addView(boton("Escuchar", ACENTO, v -> startForegroundService(Alarmas.intentVoz(this, r.id, 1))));
-        botones.addView(boton("Editar", SUAVE, v -> {
+        c.setClickable(true);
+        c.setOnClickListener(v -> {
             LocalDate d = r.tieneFecha() ? r.fechaEvento().toLocalDate() : null;
             LocalTime h = r.conHora ? r.fechaEvento().toLocalTime() : null;
-            abrirEditor(r, r.texto, d, h);
-        }));
-        botones.addView(boton("Borrar", ALERTA, v -> new AlertDialog.Builder(this)
-                .setMessage("¿Borrar este recordatorio?")
-                .setNegativeButton("No", null)
-                .setPositiveButton("Borrar", (d, w) -> {
-                    Alarmas.cancelar(this, r);
-                    Almacen.borrar(this, r.id);
-                    pintarLista();
-                })
-                .show()));
-        c.addView(botones);
+            abrirEditor(r, r.texto, d, h, r.repite, false);
+        });
+
+        if (r.tieneFecha()) c.addView(insignia(r.fechaEvento().toLocalDate()));
+
+        LinearLayout info = new LinearLayout(this);
+        info.setOrientation(LinearLayout.VERTICAL);
+        info.setPadding(r.tieneFecha() ? dp(12) : dp(4), 0, dp(4), 0);
+        info.addView(texto(r.texto, 16, t.tinta));
+        if (r.tieneFecha()) {
+            String meta = r.conHora ? Fechas.hora(r.fechaEvento().toLocalTime())
+                    : Fechas.dia(r.fechaEvento().toLocalDate(), LocalDate.now());
+            if (r.repite != ParserFechas.REPITE_NO) meta += " · " + Fechas.repeticion(r.repite);
+            TextView f = texto(meta, 14, t.acento);
+            f.setPadding(0, dp(3), 0, 0);
+            info.addView(f);
+        }
+        c.addView(info, new LinearLayout.LayoutParams(0, WC, 1f));
+
+        c.addView(icono(R.drawable.ic_altavoz, "Escuchar", t.acento,
+                v -> startForegroundService(Alarmas.intentVoz(this, r.id, 1))));
+        c.addView(icono(R.drawable.ic_borrar, "Borrar", t.suave, v -> borrar(r)));
         return c;
     }
 
-    private Button boton(String t, int color, View.OnClickListener accion) {
-        Button b = new Button(this);
-        b.setText(t);
-        b.setAllCaps(false);
-        b.setTextColor(color);
-        b.setBackgroundColor(Color.TRANSPARENT);
-        b.setMinWidth(0);
-        b.setMinimumWidth(0);
-        b.setPadding(dp(10), 0, dp(10), 0);
-        b.setOnClickListener(accion);
+    private View insignia(LocalDate d) {
+        LinearLayout b = new LinearLayout(this);
+        b.setOrientation(LinearLayout.VERTICAL);
+        b.setGravity(Gravity.CENTER);
+        b.setBackground(t.redondo(t.tenue, 12));
+        TextView dia = texto(String.valueOf(d.getDayOfMonth()), 19, t.tinta);
+        dia.setTypeface(Typeface.DEFAULT_BOLD);
+        dia.setGravity(Gravity.CENTER);
+        TextView mes = texto(Fechas.mesCorto(d), 11, t.tinta);
+        mes.setGravity(Gravity.CENTER);
+        b.addView(dia);
+        b.addView(mes);
+        b.setLayoutParams(new LinearLayout.LayoutParams(dp(52), dp(56)));
         return b;
+    }
+
+    private ImageButton icono(int recurso, String descripcion, int color, View.OnClickListener accion) {
+        ImageButton b = new ImageButton(this);
+        b.setImageResource(recurso);
+        b.setImageTintList(t.lista(color));
+        b.setBackgroundColor(Color.TRANSPARENT);
+        b.setContentDescription(descripcion);
+        b.setOnClickListener(accion);
+        b.setLayoutParams(new LinearLayout.LayoutParams(dp(46), dp(48)));
+        return b;
+    }
+
+    private void borrar(Recordatorio r) {
+        Alarmas.cancelar(this, r);
+        Almacen.borrar(this, r.id);
+        pintarLista();
+        mostrarDeshacer(r);
+    }
+
+    private void mostrarDeshacer(Recordatorio r) {
+        if (barraDeshacer != null) raizMarco.removeView(barraDeshacer);
+        LinearLayout b = new LinearLayout(this);
+        b.setGravity(Gravity.CENTER_VERTICAL);
+        b.setBackground(t.redondo(t.tinta, 14));
+        b.setPadding(dp(16), 0, dp(4), 0);
+        b.setElevation(dp(8));
+        b.addView(texto("Recordatorio borrado", 15, t.fondo), new LinearLayout.LayoutParams(0, WC, 1f));
+        View vista = b;
+        b.addView(botonTexto("Deshacer", t.tenue, v -> {
+            Almacen.guardar(this, r);
+            Alarmas.programar(this, r);
+            raizMarco.removeView(vista);
+            pintarLista();
+        }));
+        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(MP, dp(56), Gravity.BOTTOM);
+        lp.setMargins(dp(14), 0, dp(14), dp(18));
+        raizMarco.addView(b, lp);
+        barraDeshacer = b;
+        handler.postDelayed(() -> raizMarco.removeView(vista), 6000);
     }
 }

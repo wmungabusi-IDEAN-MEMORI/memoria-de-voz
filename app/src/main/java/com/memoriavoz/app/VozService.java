@@ -86,7 +86,8 @@ public class VozService extends Service implements TextToSpeech.OnInitListener {
             if (enCurso == 0 && pendientes.isEmpty()) terminar();
             return START_NOT_STICKY;
         }
-        pendientes.add(new Pendiente(Alarmas.frase(r), veces));
+        String frase = intent.getStringExtra(Alarmas.EXTRA_FRASE);
+        pendientes.add(new Pendiente(frase != null ? frase : Alarmas.frase(r), veces));
         if (listo) hablarPendientes();
         return START_NOT_STICKY;
     }

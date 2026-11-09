@@ -20,7 +20,10 @@ public final class ParserFechas {
         public String texto;
         public LocalDate fecha;
         public LocalTime hora;
+        public int repite;
     }
+
+    public static final int REPITE_NO = 0, REPITE_DIA = 1, REPITE_SEMANA = 2, REPITE_MES = 3, REPITE_ANIO = 4;
 
     private static final Map<String, Integer> NUMEROS = new HashMap<>();
     static {
@@ -87,6 +90,14 @@ public final class ParserFechas {
     private static final Pattern MES_PROX = re("\\b(?:para\\s+)?(?:el\\s+)?(?:proximo\\s+mes|mes\\s+que\\s+viene)" + FIN);
     private static final Pattern SOLO_DIA = re("\\b(?:para\\s+)?(?:el|dia)\\s+(?:dia\\s+)?(" + NUM + ")" + FIN);
 
+    private static final Pattern REP_DIA = re("\\b(?:todos\\s+los\\s+dias|cada\\s+dia|diariamente|a\\s+diario)" + FIN);
+    private static final Pattern REP_DIA_SEMANA = re("\\b(?:todos\\s+los|cada)\\s+(" + DIAS + ")(?:\\s+de\\s+cada\\s+semana)?" + FIN);
+    private static final Pattern REP_SEMANA = re("\\b(?:todas\\s+las\\s+semanas|cada\\s+semana|semanalmente)" + FIN);
+    private static final Pattern REP_NUM = re("\\b(?:todos\\s+los|cada)\\s+(\\d{1,2}|" + NUM + ")(?:\\s+de\\s+cada\\s+mes)?"
+            + "(?!\\s+(?:minutos?|horas?|dias?|semanas?|meses|anos))" + FIN);
+    private static final Pattern REP_MES = re("\\b(?:todos\\s+los\\s+meses|cada\\s+mes|mensualmente)" + FIN);
+    private static final Pattern REP_ANIO = re("\\b(?:todos\\s+los\\s+anos|cada\\s+ano|anualmente)" + FIN);
+
     private static final Pattern INICIO = re("^\\s*(?:por favor\\s*,?\\s*)?(?:recuerdame|recordarme|recordar|acuerdate"
             + "|recordatorio|no olvidar|no olvides|no me dejes olvidar|avisame|guarda|guardar|anota|anotar|apunta)"
             + "(?:\\s+(?:que|de|para))?\\s*,?\\s+");
@@ -152,6 +163,7 @@ public final class ParserFechas {
     private Resultado ejecutar() {
         Resultado r = new Resultado();
         boolean[] sinPeriodo = {false};
+        repeticion(r);
         relativo(r);
         if (r.hora == null) hora(r, sinPeriodo);
         periodo(r, sinPeriodo);
@@ -167,8 +179,38 @@ public final class ParserFechas {
         if (r.fecha == null && r.hora != null) {
             r.fecha = r.hora.isAfter(ahora.toLocalTime()) ? ahora.toLocalDate() : ahora.toLocalDate().plusDays(1);
         }
+        if (r.fecha == null && r.repite != REPITE_NO) {
+            LocalDate hoy = ahora.toLocalDate();
+            r.fecha = r.repite == REPITE_DIA ? hoy : r.repite == REPITE_SEMANA ? hoy.plusWeeks(1)
+                    : r.repite == REPITE_MES ? hoy.plusMonths(1) : hoy.plusYears(1);
+        }
         r.texto = limpiar();
         return r;
+    }
+
+    private void repeticion(Resultado r) {
+        LocalDate hoy = ahora.toLocalDate();
+        Matcher m;
+        if ((m = buscar(REP_DIA)) != null) {
+            r.repite = REPITE_DIA;
+        } else if ((m = buscar(REP_DIA_SEMANA)) != null) {
+            r.repite = REPITE_SEMANA;
+            r.fecha = hoy.with(TemporalAdjusters.nextOrSame(DayOfWeek.of(SEMANA.indexOf(m.group(1)) + 1)));
+        } else if ((m = buscar(REP_SEMANA)) != null) {
+            r.repite = REPITE_SEMANA;
+        } else if ((m = buscar(REP_MES)) != null) {
+            r.repite = REPITE_MES;
+        } else if ((m = buscar(REP_ANIO)) != null) {
+            r.repite = REPITE_ANIO;
+        } else if ((m = buscar(REP_NUM)) != null) {
+            LocalDate d = diaDelMes(valor(m.group(1)), hoy);
+            if (d == null) return;
+            r.repite = REPITE_MES;
+            r.fecha = d;
+        } else {
+            return;
+        }
+        marcar(m);
     }
 
     private void relativo(Resultado r) {

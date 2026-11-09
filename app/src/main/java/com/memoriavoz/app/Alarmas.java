@@ -19,6 +19,11 @@ public final class Alarmas {
     public static final String EXTRA_ID = "id";
     public static final String EXTRA_MOMENTO = "momento";
     public static final String EXTRA_VECES = "veces";
+    public static final String EXTRA_FRASE = "frase";
+    public static final String EXTRA_CUANDO = "cuando";
+    public static final String ACCION_POSPONER = "com.memoriavoz.app.POSPONER";
+    public static final String ACCION_LISTO = "com.memoriavoz.app.LISTO";
+    public static final int MINUTOS_POSPONER = 10;
     private static final long GRACIA_MS = 120_000L;
 
     private Alarmas() {}
@@ -81,8 +86,9 @@ public final class Alarmas {
             if (r.tuvoAvisoPerdido(ahora - GRACIA_MS)) {
                 r.ultimoAviso = ahora - GRACIA_MS;
                 Almacen.guardar(c, r);
-                notificar(c, r, "Aviso que no pudo sonar a tiempo");
+                notificar(c, r, "Aviso que no pudo sonar a tiempo", false);
             }
+            if (r.avanzarRepeticion(ahora)) Almacen.guardar(c, r);
             programar(c, r);
         }
     }
@@ -90,6 +96,10 @@ public final class Alarmas {
     public static String frase(Recordatorio r) {
         if (!r.tieneFecha()) return "Nota guardada: " + r.texto + ".";
         return Fechas.frase(r.texto, r.fechaEvento(), r.conHora, java.time.LocalDateTime.now());
+    }
+
+    public static String cuando(Recordatorio r) {
+        return r.tieneFecha() ? Fechas.completa(r.fechaEvento(), r.conHora, LocalDate.now()) : "Nota guardada";
     }
 
     public static Intent intentVoz(Context c, long id, int veces) {
@@ -100,22 +110,63 @@ public final class Alarmas {
         return i;
     }
 
-    public static void notificar(Context c, Recordatorio r, String titulo) {
+    public static Intent intentVoz(Context c, long id, int veces, String frase) {
+        return intentVoz(c, id, veces).putExtra(EXTRA_FRASE, frase);
+    }
+
+    private static PendingIntent intentAccion(Context c, long id, String accion) {
+        Intent i = new Intent(c, AlarmaReceiver.class);
+        i.setAction(accion);
+        i.setData(Uri.parse("memoriavoz://accion/" + id + "/" + accion));
+        i.putExtra(EXTRA_ID, id);
+        return PendingIntent.getBroadcast(c, codigo(id), i,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+    }
+
+    public static void posponer(Context c, long id) {
+        cerrarAviso(c, id);
+        Recordatorio r = Almacen.buscar(c, id);
+        if (r == null) return;
+        r.pospuesto = System.currentTimeMillis() + MINUTOS_POSPONER * 60_000L;
+        Almacen.guardar(c, r);
+        programar(c, r);
+    }
+
+    public static void cerrarAviso(Context c, long id) {
+        c.getSystemService(NotificationManager.class).cancel(codigo(id));
+        c.stopService(new Intent(c, VozService.class));
+    }
+
+    private static Notification.Action accion(String titulo, PendingIntent pi) {
+        return new Notification.Action.Builder(null, titulo, pi).build();
+    }
+
+    public static void notificar(Context c, Recordatorio r, String titulo, boolean pantallaCompleta) {
         crearCanales(c);
-        String cuando = r.tieneFecha()
-                ? Fechas.completa(r.fechaEvento(), r.conHora, LocalDate.now()) : "Nota guardada";
+        String cuando = cuando(r);
         PendingIntent escuchar = PendingIntent.getForegroundService(c, codigo(r.id), intentVoz(c, r.id, 1),
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-        Notification n = new Notification.Builder(c, CANAL_AVISOS)
+        Notification.Builder b = new Notification.Builder(c, CANAL_AVISOS)
                 .setSmallIcon(R.drawable.ic_notificacion)
                 .setContentTitle(titulo)
-                .setContentText(r.texto)
+                .setContentText(r.texto + " · " + cuando)
                 .setStyle(new Notification.BigTextStyle().bigText(r.texto + "\n" + cuando))
                 .setCategory(Notification.CATEGORY_REMINDER)
                 .setContentIntent(intentAbrir(c, codigo(r.id)))
                 .setAutoCancel(true)
-                .addAction(new Notification.Action.Builder(null, "Escuchar", escuchar).build())
-                .build();
-        c.getSystemService(NotificationManager.class).notify(codigo(r.id), n);
+                .addAction(accion("Escuchar", escuchar))
+                .addAction(accion("Posponer " + MINUTOS_POSPONER + " min", intentAccion(c, r.id, ACCION_POSPONER)))
+                .addAction(accion("Listo", intentAccion(c, r.id, ACCION_LISTO)));
+        if (pantallaCompleta) {
+            Intent p = new Intent(c, AlarmaActivity.class);
+            p.setData(Uri.parse("memoriavoz://pantalla/" + r.id));
+            p.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            p.putExtra(EXTRA_ID, r.id);
+            p.putExtra(EXTRA_CUANDO, cuando);
+            b.setCategory(Notification.CATEGORY_ALARM);
+            b.setFullScreenIntent(PendingIntent.getActivity(c, codigo(r.id), p,
+                    PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE), true);
+        }
+        c.getSystemService(NotificationManager.class).notify(codigo(r.id), b.build());
     }
 }

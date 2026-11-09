@@ -19,6 +19,9 @@ public final class Recordatorio {
     public boolean exacta;
     public long creado;
     public long ultimoAviso;
+    public int repite;
+    public int diaBase;
+    public long pospuesto;
 
     public boolean tieneFecha() {
         return evento > 0;
@@ -40,6 +43,7 @@ public final class Recordatorio {
         if (diaAntes) m.add(aMillis(ev.minusDays(1)));
         if (mismoDia) m.add(aMillis(conHora ? ev.minusHours(1) : ev));
         if (exacta) m.add(aMillis(ev));
+        if (pospuesto > 0) m.add(pospuesto);
         m.removeIf(x -> x <= creado);
         if (m.isEmpty() && evento > creado) m.add(evento);
         return m;
@@ -59,10 +63,37 @@ public final class Recordatorio {
         return false;
     }
 
+    private LocalDateTime siguiente(LocalDateTime ev) {
+        switch (repite) {
+            case ParserFechas.REPITE_DIA: return ev.plusDays(1);
+            case ParserFechas.REPITE_SEMANA: return ev.plusWeeks(1);
+            case ParserFechas.REPITE_ANIO: return ev.plusYears(1);
+            default:
+                LocalDateTime t = ev.plusMonths(1);
+                int dia = diaBase > 0 ? diaBase : ev.getDayOfMonth();
+                return t.withDayOfMonth(Math.min(dia, t.toLocalDate().lengthOfMonth()));
+        }
+    }
+
+    /** En los periódicos, pasa a la siguiente ocurrencia cuando ya no quedan avisos en la actual. */
+    public boolean avanzarRepeticion(long ahora) {
+        if (repite == ParserFechas.REPITE_NO || !tieneFecha()) return false;
+        boolean cambio = false;
+        int vueltas = 0;
+        while (proximoAviso(ahora) == null && vueltas++ < 20000) {
+            creado = evento;
+            evento = aMillis(siguiente(fechaEvento()));
+            pospuesto = 0;
+            cambio = true;
+        }
+        return cambio;
+    }
+
     JSONObject aJson() throws JSONException {
         return new JSONObject().put("id", id).put("texto", texto).put("evento", evento).put("conHora", conHora)
                 .put("diaAntes", diaAntes).put("mismoDia", mismoDia).put("exacta", exacta).put("creado", creado)
-                .put("ultimoAviso", ultimoAviso);
+                .put("ultimoAviso", ultimoAviso).put("repite", repite).put("diaBase", diaBase)
+                .put("pospuesto", pospuesto);
     }
 
     static Recordatorio deJson(JSONObject o) throws JSONException {
@@ -76,6 +107,9 @@ public final class Recordatorio {
         r.exacta = o.getBoolean("exacta");
         r.creado = o.getLong("creado");
         r.ultimoAviso = o.getLong("ultimoAviso");
+        r.repite = o.optInt("repite", 0);
+        r.diaBase = o.optInt("diaBase", 0);
+        r.pospuesto = o.optLong("pospuesto", 0);
         return r;
     }
 }

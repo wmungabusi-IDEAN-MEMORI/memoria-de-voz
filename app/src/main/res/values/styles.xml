@@ -8,4 +8,6 @@
         <item name="android:statusBarColor">#F5F3EE</item>
         <item name="android:windowLightStatusBar">true</item>
     </style>
+    <string name="atajo_corto">Nueva nota</string>
+    <string name="atajo_largo">Nueva nota de voz</string>
 </resources>

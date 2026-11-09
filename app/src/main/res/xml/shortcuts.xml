@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="nueva_nota"
+        android:enabled="true"
+        android:icon="@drawable/ic_atajo"
+        android:shortcutShortLabel="@string/atajo_corto"
+        android:shortcutLongLabel="@string/atajo_largo">
+        <intent
+            android:action="com.memoriavoz.app.NUEVA"
+            android:targetPackage="com.memoriavoz.app"
+            android:targetClass="com.memoriavoz.app.MainActivity" />
+    </shortcut>
+</shortcuts>
