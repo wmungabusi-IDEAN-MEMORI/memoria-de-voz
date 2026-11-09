@@ -1,0 +1,11 @@
+name: diag-emu
+on: push
+jobs:
+  j:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          script: echo hola
