@@ -47,11 +47,15 @@ import android.widget.Toast;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.time.YearMonth;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 public class MainActivity extends Activity {
     public static final String ACCION_NUEVA = "com.memoriavoz.app.NUEVA";
@@ -76,6 +80,12 @@ public class MainActivity extends Activity {
     private LinearLayout avisoBateria;
     private FrameLayout raizMarco;
     private View barraDeshacer;
+    private boolean modoCalendario;
+    private LocalDate diaElegido;
+    private YearMonth mesVisible;
+    private LinearLayout calendario;
+    private LinearLayout filaPestanas;
+    private View buscadorVista;
 
     private int dp(int v) {
         return t.dp(v);
@@ -125,11 +135,25 @@ public class MainActivity extends Activity {
         escribir.setOnClickListener(v -> pedirTexto());
         raiz.addView(escribir);
 
-        raiz.addView(crearBuscador());
+        filaPestanas = new LinearLayout(this);
+        filaPestanas.setBackground(t.redondo(t.tarjeta, 14));
+        filaPestanas.setPadding(dp(4), dp(4), dp(4), dp(4));
+        LinearLayout.LayoutParams lpPest = new LinearLayout.LayoutParams(MP, dp(52));
+        lpPest.topMargin = dp(4);
+        raiz.addView(filaPestanas, lpPest);
+        pintarPestanas();
+
+        buscadorVista = crearBuscador();
+        raiz.addView(buscadorVista);
 
         lista = new LinearLayout(this);
         lista.setOrientation(LinearLayout.VERTICAL);
         raiz.addView(lista);
+
+        calendario = new LinearLayout(this);
+        calendario.setOrientation(LinearLayout.VERTICAL);
+        calendario.setVisibility(View.GONE);
+        raiz.addView(calendario);
 
         setContentView(raizMarco);
         pedirPermisoNotificaciones();
@@ -745,6 +769,14 @@ public class MainActivity extends Activity {
         resumen.setText(totalHoy == 0 ? "Nada pendiente para hoy"
                 : totalHoy == 1 ? "Tienes 1 recordatorio hoy" : "Tienes " + totalHoy + " recordatorios hoy");
 
+        lista.setVisibility(modoCalendario ? View.GONE : View.VISIBLE);
+        buscadorVista.setVisibility(modoCalendario ? View.GONE : View.VISIBLE);
+        calendario.setVisibility(modoCalendario ? View.VISIBLE : View.GONE);
+        if (modoCalendario) {
+            pintarCalendario();
+            return;
+        }
+
         Comparator<Recordatorio> porFecha = Comparator.comparingLong((Recordatorio r) -> r.evento);
         for (List<Recordatorio> l : List.of(deHoy, deManana, semana, despues)) l.sort(porFecha);
         notas.sort(Comparator.comparingLong((Recordatorio r) -> -r.creado));
@@ -785,7 +817,155 @@ public class MainActivity extends Activity {
         for (Recordatorio r : items) lista.addView(tarjeta(r));
     }
 
+    private void pintarPestanas() {
+        filaPestanas.removeAllViews();
+        filaPestanas.addView(pestana("Lista", !modoCalendario, false));
+        filaPestanas.addView(pestana("Calendario", modoCalendario, true));
+    }
+
+    private TextView pestana(String nombre, boolean activa, boolean calendarioAlTocar) {
+        TextView v = texto(nombre, 15, activa ? t.sobreAcento : t.tinta);
+        v.setGravity(Gravity.CENTER);
+        if (activa) v.setBackground(t.redondo(t.acento, 11));
+        v.setClickable(true);
+        v.setFocusable(true);
+        v.setOnClickListener(x -> {
+            modoCalendario = calendarioAlTocar;
+            pintarPestanas();
+            pintarLista();
+        });
+        v.setLayoutParams(new LinearLayout.LayoutParams(0, MP, 1f));
+        return v;
+    }
+
+    private void cambiarMes(int meses) {
+        mesVisible = mesVisible.plusMonths(meses);
+        LocalDate hoy = LocalDate.now();
+        diaElegido = YearMonth.from(hoy).equals(mesVisible) ? hoy : mesVisible.atDay(1);
+        pintarCalendario();
+    }
+
+    private void pintarCalendario() {
+        calendario.removeAllViews();
+        LocalDate hoy = LocalDate.now();
+        if (diaElegido == null) diaElegido = hoy;
+        if (mesVisible == null) mesVisible = YearMonth.from(diaElegido);
+        LocalDate inicio = mesVisible.atDay(1);
+        LocalDate fin = mesVisible.atEndOfMonth();
+
+        Map<LocalDate, List<Recordatorio>> porDia = new HashMap<>();
+        for (Recordatorio r : Almacen.todos(this)) {
+            if (!r.tieneFecha()) continue;
+            for (LocalDate d : Fechas.ocurrencias(r.fechaEvento().toLocalDate(), r.repite, r.diaBase, inicio, fin)) {
+                porDia.computeIfAbsent(d, k -> new ArrayList<>()).add(r);
+            }
+        }
+
+        LinearLayout panel = new LinearLayout(this);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        panel.setBackground(t.redondo(t.tarjeta, 16));
+        panel.setPadding(dp(8), dp(8), dp(8), dp(12));
+        LinearLayout.LayoutParams lpPanel = new LinearLayout.LayoutParams(MP, WC);
+        lpPanel.topMargin = dp(10);
+        calendario.addView(panel, lpPanel);
+
+        LinearLayout cabecera = new LinearLayout(this);
+        cabecera.setGravity(Gravity.CENTER_VERTICAL);
+        cabecera.addView(icono(R.drawable.ic_atras, "Mes anterior", t.tinta, v -> cambiarMes(-1)));
+        TextView titulo = texto(Fechas.mesAnio(inicio), 17, t.tinta);
+        titulo.setTypeface(Typeface.DEFAULT_BOLD);
+        titulo.setGravity(Gravity.CENTER);
+        cabecera.addView(titulo, new LinearLayout.LayoutParams(0, WC, 1f));
+        cabecera.addView(icono(R.drawable.ic_adelante, "Mes siguiente", t.tinta, v -> cambiarMes(1)));
+        panel.addView(cabecera);
+
+        LinearLayout semana = new LinearLayout(this);
+        for (String n : new String[]{"L", "M", "M", "J", "V", "S", "D"}) {
+            TextView v = texto(n, 13, t.suave);
+            v.setGravity(Gravity.CENTER);
+            semana.addView(v, new LinearLayout.LayoutParams(0, dp(28), 1f));
+        }
+        panel.addView(semana);
+
+        int vacios = inicio.getDayOfWeek().getValue() - 1;
+        int dias = mesVisible.lengthOfMonth();
+        int total = vacios + dias;
+        for (int fila = 0; fila * 7 < total; fila++) {
+            LinearLayout f = new LinearLayout(this);
+            for (int c = 0; c < 7; c++) {
+                int n = fila * 7 + c - vacios + 1;
+                View celda;
+                if (n < 1 || n > dias) {
+                    celda = new View(this);
+                } else {
+                    LocalDate d = mesVisible.atDay(n);
+                    celda = celda(d, hoy, porDia.getOrDefault(d, Collections.emptyList()).size());
+                }
+                f.addView(celda, new LinearLayout.LayoutParams(0, dp(52), 1f));
+            }
+            panel.addView(f);
+        }
+
+        TextView dia = texto(Fechas.hoyLargo(diaElegido), 17, t.tinta);
+        dia.setTypeface(Typeface.DEFAULT_BOLD);
+        dia.setPadding(0, dp(18), 0, dp(8));
+        calendario.addView(dia);
+
+        List<Recordatorio> delDia = new ArrayList<>(porDia.getOrDefault(diaElegido, Collections.emptyList()));
+        delDia.sort(Comparator.comparing((Recordatorio r) -> r.fechaEvento().toLocalTime()));
+        if (delDia.isEmpty()) {
+            calendario.addView(texto("Nada pendiente este día.", 15, t.suave));
+        }
+        for (Recordatorio r : delDia) calendario.addView(tarjeta(r, true));
+
+        LocalDate elegido = diaElegido;
+        if (!elegido.isBefore(hoy)) {
+            calendario.addView(botonTexto("Agregar para este día", t.acento,
+                    v -> abrirEditor(null, "", elegido, null, ParserFechas.REPITE_NO, false)));
+        }
+    }
+
+    private View celda(LocalDate d, LocalDate hoy, int cantidad) {
+        boolean elegido = d.equals(diaElegido);
+        LinearLayout c = new LinearLayout(this);
+        c.setOrientation(LinearLayout.VERTICAL);
+        c.setGravity(Gravity.CENTER_HORIZONTAL);
+        c.setClickable(true);
+        c.setFocusable(true);
+        c.setContentDescription(d.getDayOfMonth() + ", " + (cantidad == 0 ? "sin pendientes"
+                : cantidad == 1 ? "1 pendiente" : cantidad + " pendientes"));
+        c.setOnClickListener(v -> {
+            diaElegido = d;
+            pintarCalendario();
+        });
+
+        TextView n = texto(String.valueOf(d.getDayOfMonth()), 15, elegido ? t.sobreAcento : t.tinta);
+        n.setGravity(Gravity.CENTER);
+        if (elegido) n.setBackground(t.circulo(t.acento));
+        else if (d.equals(hoy)) n.setBackground(t.circulo(t.tenue));
+        c.addView(n, new LinearLayout.LayoutParams(dp(36), dp(36)));
+
+        LinearLayout puntos = new LinearLayout(this);
+        puntos.setGravity(Gravity.CENTER);
+        int color = d.isBefore(hoy) ? t.suave : t.acento;
+        for (int i = 0; i < Math.min(cantidad, 3); i++) {
+            View p = new View(this);
+            p.setBackground(t.circulo(color));
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(dp(5), dp(5));
+            lp.leftMargin = dp(1);
+            lp.rightMargin = dp(1);
+            puntos.addView(p, lp);
+        }
+        LinearLayout.LayoutParams lpP = new LinearLayout.LayoutParams(WC, dp(9));
+        c.addView(puntos, lpP);
+        return c;
+    }
+
     private View tarjeta(Recordatorio r) {
+        return tarjeta(r, false);
+    }
+
+    private View tarjeta(Recordatorio r, boolean enCalendario) {
         LinearLayout c = new LinearLayout(this);
         c.setGravity(Gravity.CENTER_VERTICAL);
         c.setPadding(dp(12), dp(10), dp(4), dp(10));
@@ -800,15 +980,15 @@ public class MainActivity extends Activity {
             abrirEditor(r, r.texto, d, h, r.repite, false);
         });
 
-        if (r.tieneFecha()) c.addView(insignia(r.fechaEvento().toLocalDate()));
+        if (r.tieneFecha() && !enCalendario) c.addView(insignia(r.fechaEvento().toLocalDate()));
 
         LinearLayout info = new LinearLayout(this);
         info.setOrientation(LinearLayout.VERTICAL);
-        info.setPadding(r.tieneFecha() ? dp(12) : dp(4), 0, dp(4), 0);
+        info.setPadding(r.tieneFecha() && !enCalendario ? dp(12) : dp(4), 0, dp(4), 0);
         info.addView(texto(r.texto, 16, t.tinta));
         if (r.tieneFecha()) {
             String meta = r.conHora ? Fechas.hora(r.fechaEvento().toLocalTime())
-                    : Fechas.dia(r.fechaEvento().toLocalDate(), LocalDate.now());
+                    : enCalendario ? "Sin hora" : Fechas.dia(r.fechaEvento().toLocalDate(), LocalDate.now());
             if (r.repite != ParserFechas.REPITE_NO) meta += " · " + Fechas.repeticion(r.repite);
             TextView f = texto(meta, 14, t.acento);
             f.setPadding(0, dp(3), 0, 0);

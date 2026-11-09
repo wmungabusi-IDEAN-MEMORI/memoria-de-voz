@@ -23,6 +23,13 @@ public class PruebaParser {
                 + (ok ? "" : "   ESPERADO: " + fecha + " " + hora + " rep=" + repite + " | " + texto));
     }
 
+    static void cal(LocalDate p, int rep, int base, LocalDate d, LocalDate h, String esperado) {
+        String g = Fechas.ocurrencias(p, rep, base, d, h).toString();
+        boolean ok = g.equals(esperado);
+        if (!ok) mal++;
+        System.out.println((ok ? "ok   " : "MAL  ") + "calendario " + p + " rep=" + rep + " => " + g);
+    }
+
     public static void main(String[] a) {
         c("Recuérdame que tengo reunión con Juan mañana a las 3 de la tarde", "2026-11-10", "15:00", "Tengo reunión con Juan");
         c("mañana por la mañana llevar el carro al taller", "2026-11-10", "09:00", "Llevar el carro al taller");
@@ -62,6 +69,13 @@ public class PruebaParser {
         rep("cada mes el 20 pagar el internet", "2026-11-20", "null", 3, "Pagar el internet");
         rep("cada año el 3 de marzo aniversario de la empresa", "2027-03-03", "null", 4, "Aniversario de la empresa");
         rep("cada 3 días regar las plantas", "null", "null", 0, "Cada 3 días regar las plantas");
+        LocalDate nov1 = LocalDate.of(2026, 11, 1), nov30 = LocalDate.of(2026, 11, 30);
+        cal(LocalDate.of(2026, 11, 16), 2, 16, nov1, nov30, "[2026-11-16, 2026-11-23, 2026-11-30]");
+        cal(LocalDate.of(2026, 10, 31), 3, 31, nov1, nov30, "[2026-11-30]");
+        cal(LocalDate.of(2026, 12, 2), 1, 2, nov1, nov30, "[]");
+        cal(LocalDate.of(2026, 11, 28), 1, 28, nov1, nov30, "[2026-11-28, 2026-11-29, 2026-11-30]");
+        cal(LocalDate.of(2026, 11, 20), 0, 20, nov1, nov30, "[2026-11-20]");
+        cal(LocalDate.of(2025, 11, 9), 4, 9, nov1, nov30, "[2026-11-09]");
         System.out.println(mal == 0 ? "TODO OK" : "FALLOS: " + mal);
         LocalDateTime ev = LocalDateTime.of(2026, 11, 10, 15, 0);
         System.out.println(Fechas.frase("Reunión con Juan", ev, true, AHORA));

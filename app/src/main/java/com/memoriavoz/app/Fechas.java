@@ -5,6 +5,8 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 
 /** Convierte fechas en frases naturales para mostrar y para decir en voz alta. */
@@ -13,6 +15,37 @@ public final class Fechas {
     private static final DateTimeFormatter LARGA = DateTimeFormatter.ofPattern("EEEE d 'de' MMMM", ES);
 
     private Fechas() {}
+
+    public static String mesAnio(LocalDate d) {
+        String s = d.format(DateTimeFormatter.ofPattern("LLLL yyyy", ES));
+        return s.substring(0, 1).toUpperCase(ES) + s.substring(1);
+    }
+
+    /** Días entre desde y hasta en que ocurre un recordatorio, contando sus repeticiones. */
+    public static List<LocalDate> ocurrencias(LocalDate primera, int repite, int diaBase, LocalDate desde,
+                                              LocalDate hasta) {
+        List<LocalDate> dias = new ArrayList<>();
+        for (int n = 0; n < 40000; n++) {
+            LocalDate d = enesima(primera, repite, diaBase, n);
+            if (d.isAfter(hasta)) break;
+            if (!d.isBefore(desde)) dias.add(d);
+            if (repite == ParserFechas.REPITE_NO) break;
+        }
+        return dias;
+    }
+
+    private static LocalDate enesima(LocalDate p, int repite, int diaBase, int n) {
+        switch (repite) {
+            case ParserFechas.REPITE_DIA: return p.plusDays(n);
+            case ParserFechas.REPITE_SEMANA: return p.plusWeeks(n);
+            case ParserFechas.REPITE_MES:
+                LocalDate m = p.plusMonths(n);
+                int dia = diaBase > 0 ? diaBase : p.getDayOfMonth();
+                return m.withDayOfMonth(Math.min(dia, m.lengthOfMonth()));
+            case ParserFechas.REPITE_ANIO: return p.plusYears(n);
+            default: return p;
+        }
+    }
 
     public static String repeticion(int repite) {
         switch (repite) {

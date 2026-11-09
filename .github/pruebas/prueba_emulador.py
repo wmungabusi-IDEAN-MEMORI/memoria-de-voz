@@ -131,6 +131,16 @@ if buscar("Posponer 10 min") is not None:
     tocar_texto("Posponer 10 min")
 time.sleep(2)
 
+adb("shell", "input", "swipe", "500", "700", "500", "2000", "300")
+time.sleep(1)
+adb("shell", "input", "swipe", "500", "700", "500", "2000", "300")
+tocar_texto("Calendario")
+captura("12_calendario")
+adb("shell", "input", "swipe", "500", "1700", "500", "700", "400")
+captura("13_calendario_dia")
+tocar_texto("Mes siguiente")
+captura("14_calendario_mes_siguiente")
+
 adb("shell", "cmd", "uimode", "night", "yes", check=False)
 adb("shell", "am", "force-stop", PAQUETE)
 adb("shell", "am", "start", "-W", "-n", f"{PAQUETE}/.MainActivity")
