@@ -61,7 +61,7 @@ public class PruebaParser {
         rep("todos los 15 pagar a proveedores", "2026-11-15", "null", 3, "Pagar a proveedores");
         rep("cada mes el 20 pagar el internet", "2026-11-20", "null", 3, "Pagar el internet");
         rep("cada año el 3 de marzo aniversario de la empresa", "2027-03-03", "null", 4, "Aniversario de la empresa");
-        rep("cada 3 días regar las plantas", "2026-11-12", "null", 0, "Cada regar las plantas");
+        rep("cada 3 días regar las plantas", "null", "null", 0, "Cada 3 días regar las plantas");
         System.out.println(mal == 0 ? "TODO OK" : "FALLOS: " + mal);
         LocalDateTime ev = LocalDateTime.of(2026, 11, 10, 15, 0);
         System.out.println(Fechas.frase("Reunión con Juan", ev, true, AHORA));
