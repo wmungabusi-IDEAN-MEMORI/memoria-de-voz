@@ -1,0 +1,43 @@
+plugins {
+    id "com.android.application"
+}
+
+android {
+    namespace "com.memoriavoz.app"
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "com.memoriavoz.app"
+        minSdk 26
+        targetSdk 34
+        versionCode 1
+        versionName "1.0"
+    }
+
+    signingConfigs {
+        // Firma fija: permite instalar actualizaciones encima sin perder los recordatorios.
+        fija {
+            storeFile file("memoria.keystore")
+            storePassword "memoriavoz2026"
+            keyAlias "memoria"
+            keyPassword "memoriavoz2026"
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.fija
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_11
+        targetCompatibility JavaVersion.VERSION_11
+    }
+
+    lint {
+        checkReleaseBuilds false
+        abortOnError false
+    }
+}
