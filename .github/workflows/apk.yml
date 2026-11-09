@@ -11,7 +11,7 @@ permissions:
 jobs:
   apk:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
@@ -48,9 +48,13 @@ jobs:
           IMG="system-images;android-34;google_apis;x86_64"
           yes | sdkmanager --licenses > /dev/null || true
           sdkmanager --install platform-tools emulator "$IMG" | tail -2
-          echo no | avdmanager create avd -n prueba -k "$IMG" -d pixel_6
+          export ANDROID_AVD_HOME="$HOME/.android/avd"
+          mkdir -p "$ANDROID_AVD_HOME"
+          echo no | avdmanager create avd --force -n prueba -k "$IMG" -d pixel_6 2>&1 | tee avd.log
+          emulator -list-avds | tee -a avd.log
+          emulator -list-avds | grep -qx prueba
           nohup emulator -avd prueba -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot > emulador.log 2>&1 &
-          adb wait-for-device
+          timeout 300 adb wait-for-device
           for i in $(seq 1 120); do
             [ "$(adb shell getprop sys.boot_completed | tr -d '\r')" = "1" ] && break
             sleep 5
@@ -68,7 +72,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           mkdir -p capturas
-          cp emulador.log capturas/ || true
+          cp emulador.log avd.log capturas/ || true
           zip -qr capturas.zip capturas
           gh release create "pruebas-${{ github.run_id }}" capturas.zip --prerelease \
             --title "Pruebas ${{ github.run_number }}" --notes "Capturas de la prueba automatica."
