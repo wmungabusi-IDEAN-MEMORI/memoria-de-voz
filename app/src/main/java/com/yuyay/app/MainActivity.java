@@ -56,11 +56,13 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.TreeMap;
 
 public class MainActivity extends Activity {
     public static final String ACCION_NUEVA = "com.yuyay.app.NUEVA";
     private static final int REQ_MIC = 10;
     private static final int REQ_NOTIF = 11;
+    private static final int REQ_CAL = 12;
     private static final int MP = ViewGroup.LayoutParams.MATCH_PARENT;
     private static final int WC = ViewGroup.LayoutParams.WRAP_CONTENT;
 
@@ -81,6 +83,11 @@ public class MainActivity extends Activity {
     private FrameLayout raizMarco;
     private View barraDeshacer;
     private boolean modoCalendario;
+    private boolean modoChat;
+    private boolean pensando;
+    private LinearLayout chat;
+    private LinearLayout chatMensajes;
+    private EditText chatCampo;
     private LocalDate diaElegido;
     private YearMonth mesVisible;
     private LinearLayout calendario;
@@ -118,6 +125,7 @@ public class MainActivity extends Activity {
         TextView titulo = texto("Yuyay", 32, t.tinta);
         titulo.setTypeface(Typeface.DEFAULT_BOLD);
         cabecera.addView(titulo, new LinearLayout.LayoutParams(0, WC, 1f));
+        cabecera.addView(icono(R.drawable.ic_ajustes, "Ajustes", t.suave, v -> abrirAjustes()));
         ImageView mascota = new ImageView(this);
         mascota.setImageResource(R.drawable.ic_yuyay);
         mascota.setContentDescription("Yuyay");
@@ -144,7 +152,14 @@ public class MainActivity extends Activity {
         escribir.setBackgroundColor(Color.TRANSPARENT);
         escribir.setStateListAnimator(null);
         escribir.setTextColor(t.acento);
-        escribir.setOnClickListener(v -> pedirTexto());
+        escribir.setOnClickListener(v -> {
+            if (Ajustes.tieneClave(this)) {
+                irA(false, true);
+                chatCampo.requestFocus();
+            } else {
+                pedirTexto();
+            }
+        });
         raiz.addView(escribir);
 
         filaPestanas = new LinearLayout(this);
@@ -166,6 +181,7 @@ public class MainActivity extends Activity {
         calendario.setOrientation(LinearLayout.VERTICAL);
         calendario.setVisibility(View.GONE);
         raiz.addView(calendario);
+        raiz.addView(crearChat());
 
         setContentView(raizMarco);
         pedirPermisoNotificaciones();
@@ -180,6 +196,14 @@ public class MainActivity extends Activity {
     }
 
     private void atenderIntent(Intent intent) {
+        if (intent != null && Intent.ACTION_SEND.equals(intent.getAction())) {
+            String compartido = intent.getStringExtra(Intent.EXTRA_TEXT);
+            intent.setAction(Intent.ACTION_MAIN);
+            if (compartido != null && !compartido.trim().isEmpty()) {
+                handler.post(() -> procesar(compartido.trim(), false));
+            }
+            return;
+        }
         if (intent != null && ACCION_NUEVA.equals(intent.getAction())) {
             intent.setAction(Intent.ACTION_MAIN);
             handler.postDelayed(() -> {
@@ -385,6 +409,10 @@ public class MainActivity extends Activity {
     @Override
     public void onRequestPermissionsResult(int req, String[] permisos, int[] resultados) {
         super.onRequestPermissionsResult(req, permisos, resultados);
+        if (req == REQ_CAL) {
+            pintarLista();
+            return;
+        }
         if (req != REQ_MIC) return;
         if (resultados.length > 0 && resultados[0] == PackageManager.PERMISSION_GRANTED) {
             alternarEscucha();
@@ -468,7 +496,7 @@ public class MainActivity extends Activity {
                 return;
             }
             estado.setText("Toca el micrófono para agregar otro");
-            abrirAnalizado(r.get(0), true);
+            procesar(r.get(0), true);
         }
 
         @Override
@@ -764,12 +792,15 @@ public class MainActivity extends Activity {
         List<Recordatorio> despues = new ArrayList<>();
         List<Recordatorio> notas = new ArrayList<>();
         List<Recordatorio> pasados = new ArrayList<>();
+        Map<String, List<Recordatorio>> listas = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
         int totalHoy = 0;
         for (Recordatorio r : Almacen.todos(this)) {
             boolean coincide = filtro.isEmpty() || r.texto.toLowerCase(Locale.ROOT).contains(filtro);
             if (r.tieneFecha() && r.evento >= ahora && r.fechaEvento().toLocalDate().equals(hoy)) totalHoy++;
             if (!coincide) continue;
-            if (!r.tieneFecha()) {
+            if (!r.lista.isEmpty()) {
+                listas.computeIfAbsent(r.lista, k -> new ArrayList<>()).add(r);
+            } else if (!r.tieneFecha()) {
                 notas.add(r);
             } else if (r.evento < ahora) {
                 pasados.add(r);
@@ -781,9 +812,15 @@ public class MainActivity extends Activity {
         resumen.setText(totalHoy == 0 ? "Nada pendiente para hoy"
                 : totalHoy == 1 ? "Tienes 1 recordatorio hoy" : "Tienes " + totalHoy + " recordatorios hoy");
 
-        lista.setVisibility(modoCalendario ? View.GONE : View.VISIBLE);
-        buscadorVista.setVisibility(modoCalendario ? View.GONE : View.VISIBLE);
+        boolean enLista = !modoCalendario && !modoChat;
+        lista.setVisibility(enLista ? View.VISIBLE : View.GONE);
+        buscadorVista.setVisibility(enLista ? View.VISIBLE : View.GONE);
         calendario.setVisibility(modoCalendario ? View.VISIBLE : View.GONE);
+        chat.setVisibility(modoChat ? View.VISIBLE : View.GONE);
+        if (modoChat) {
+            pintarChat();
+            return;
+        }
         if (modoCalendario) {
             pintarCalendario();
             return;
@@ -799,6 +836,15 @@ public class MainActivity extends Activity {
         seccion("Próximos 7 días", semana);
         seccion("Más adelante", despues);
         seccion("Información guardada", notas);
+        for (Map.Entry<String, List<Recordatorio>> e : listas.entrySet()) {
+            TextView h = texto(e.getKey(), 17, t.tinta);
+            h.setTypeface(Typeface.DEFAULT_BOLD);
+            h.setPadding(0, dp(22), 0, dp(8));
+            lista.addView(h);
+            List<Recordatorio> items = e.getValue();
+            items.sort(Comparator.comparing((Recordatorio r) -> r.hecho).thenComparingLong(r -> r.creado));
+            for (Recordatorio r : items) lista.addView(filaLista(r));
+        }
         if (!pasados.isEmpty()) {
             Button b = botonTexto((verPasados ? "Ocultar pasados" : "Ver pasados") + " (" + pasados.size() + ")",
                     t.suave, v -> {
@@ -831,20 +877,26 @@ public class MainActivity extends Activity {
 
     private void pintarPestanas() {
         filaPestanas.removeAllViews();
-        filaPestanas.addView(pestana("Lista", !modoCalendario, false));
-        filaPestanas.addView(pestana("Calendario", modoCalendario, true));
+        filaPestanas.addView(pestana("Lista", !modoCalendario && !modoChat, false, false));
+        filaPestanas.addView(pestana("Calendario", modoCalendario, true, false));
+        filaPestanas.addView(pestana("Chat", modoChat, false, true));
     }
 
-    private TextView pestana(String nombre, boolean activa, boolean calendarioAlTocar) {
+    private void irA(boolean calendarioSi, boolean chatSi) {
+        modoCalendario = calendarioSi;
+        modoChat = chatSi;
+        pintarPestanas();
+        pintarLista();
+    }
+
+    private TextView pestana(String nombre, boolean activa, boolean calendarioAlTocar, boolean chatAlTocar) {
         TextView v = texto(nombre, 15, activa ? t.sobreAcento : t.tinta);
         v.setGravity(Gravity.CENTER);
         if (activa) v.setBackground(t.redondo(t.acento, 11));
         v.setClickable(true);
         v.setFocusable(true);
         v.setOnClickListener(x -> {
-            modoCalendario = calendarioAlTocar;
-            pintarPestanas();
-            pintarLista();
+            irA(calendarioAlTocar, chatAlTocar);
         });
         v.setLayoutParams(new LinearLayout.LayoutParams(0, MP, 1f));
         return v;
@@ -871,6 +923,12 @@ public class MainActivity extends Activity {
             for (LocalDate d : Fechas.ocurrencias(r.fechaEvento().toLocalDate(), r.repite, r.diaBase, inicio, fin)) {
                 porDia.computeIfAbsent(d, k -> new ArrayList<>()).add(r);
             }
+        }
+        Map<LocalDate, List<Agenda.Evento>> eventos = new HashMap<>();
+        for (Agenda.Evento e : Agenda.eventos(this, Recordatorio.aMillis(inicio.atStartOfDay()) - 86_400_000L,
+                Recordatorio.aMillis(fin.plusDays(1).atStartOfDay()) + 86_400_000L)) {
+            LocalDate d = e.inicio.toLocalDate();
+            if (!d.isBefore(inicio) && !d.isAfter(fin)) eventos.computeIfAbsent(d, k -> new ArrayList<>()).add(e);
         }
 
         LinearLayout panel = new LinearLayout(this);
@@ -911,7 +969,8 @@ public class MainActivity extends Activity {
                     celda = new View(this);
                 } else {
                     LocalDate d = mesVisible.atDay(n);
-                    celda = celda(d, hoy, porDia.getOrDefault(d, Collections.emptyList()).size());
+                    celda = celda(d, hoy, porDia.getOrDefault(d, Collections.emptyList()).size(),
+                            eventos.getOrDefault(d, Collections.emptyList()).size());
                 }
                 f.addView(celda, new LinearLayout.LayoutParams(0, dp(52), 1f));
             }
@@ -925,10 +984,15 @@ public class MainActivity extends Activity {
 
         List<Recordatorio> delDia = new ArrayList<>(porDia.getOrDefault(diaElegido, Collections.emptyList()));
         delDia.sort(Comparator.comparing((Recordatorio r) -> r.fechaEvento().toLocalTime()));
-        if (delDia.isEmpty()) {
+        List<Agenda.Evento> evDia = eventos.getOrDefault(diaElegido, Collections.emptyList());
+        if (delDia.isEmpty() && evDia.isEmpty()) {
             calendario.addView(texto("Nada pendiente este día.", 15, t.suave));
         }
         for (Recordatorio r : delDia) calendario.addView(tarjeta(r, true));
+        for (Agenda.Evento e : evDia) calendario.addView(tarjetaEvento(e));
+        if (!Agenda.puedeLeer(this)) {
+            calendario.addView(botonTexto("Mostrar aquí mi Google Calendar", t.acento, v -> pedirCalendario()));
+        }
 
         LocalDate elegido = diaElegido;
         if (!elegido.isBefore(hoy)) {
@@ -937,7 +1001,7 @@ public class MainActivity extends Activity {
         }
     }
 
-    private View celda(LocalDate d, LocalDate hoy, int cantidad) {
+    private View celda(LocalDate d, LocalDate hoy, int cantidad, int deGoogle) {
         boolean elegido = d.equals(diaElegido);
         LinearLayout c = new LinearLayout(this);
         c.setOrientation(LinearLayout.VERTICAL);
@@ -960,9 +1024,10 @@ public class MainActivity extends Activity {
         LinearLayout puntos = new LinearLayout(this);
         puntos.setGravity(Gravity.CENTER);
         int color = d.isBefore(hoy) ? t.suave : t.acento;
-        for (int i = 0; i < Math.min(cantidad, 3); i++) {
+        int total = Math.min(cantidad + deGoogle, 4);
+        for (int i = 0; i < total; i++) {
             View p = new View(this);
-            p.setBackground(t.circulo(color));
+            p.setBackground(t.circulo(i < Math.min(cantidad, total) ? color : t.alerta));
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(dp(5), dp(5));
             lp.leftMargin = dp(1);
             lp.rightMargin = dp(1);
@@ -975,6 +1040,217 @@ public class MainActivity extends Activity {
 
     private View tarjeta(Recordatorio r) {
         return tarjeta(r, false);
+    }
+
+    private View tarjetaEvento(Agenda.Evento e) {
+        LinearLayout c = new LinearLayout(this);
+        c.setOrientation(LinearLayout.VERTICAL);
+        c.setPadding(dp(16), dp(12), dp(12), dp(12));
+        c.setBackground(t.redondo(t.tarjeta, 16));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(MP, WC);
+        lp.bottomMargin = dp(10);
+        c.setLayoutParams(lp);
+        c.addView(texto(e.titulo, 16, t.tinta));
+        TextView m = texto("Calendario · " + (e.todoDia ? "todo el día" : Fechas.hora(e.inicio.toLocalTime())), 14, t.alerta);
+        m.setPadding(0, dp(3), 0, 0);
+        c.addView(m);
+        return c;
+    }
+
+    private View filaLista(Recordatorio r) {
+        LinearLayout c = new LinearLayout(this);
+        c.setGravity(Gravity.CENTER_VERTICAL);
+        c.setPadding(dp(6), dp(2), dp(4), dp(2));
+        c.setBackground(t.redondo(t.tarjeta, 14));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(MP, WC);
+        lp.bottomMargin = dp(8);
+        c.setLayoutParams(lp);
+        android.widget.CheckBox caja = new android.widget.CheckBox(this);
+        caja.setChecked(r.hecho);
+        caja.setText(r.texto);
+        caja.setTextSize(16);
+        caja.setTextColor(r.hecho ? t.suave : t.tinta);
+        caja.setButtonTintList(t.lista(t.acento));
+        caja.setMinHeight(dp(48));
+        if (r.hecho) caja.setPaintFlags(caja.getPaintFlags() | android.graphics.Paint.STRIKE_THRU_TEXT_FLAG);
+        caja.setOnCheckedChangeListener((b, marcado) -> {
+            r.hecho = marcado;
+            Almacen.guardar(this, r);
+            handler.post(this::pintarLista);
+        });
+        c.addView(caja, new LinearLayout.LayoutParams(0, WC, 1f));
+        c.addView(icono(R.drawable.ic_borrar, "Borrar", t.suave, v -> borrar(r)));
+        return c;
+    }
+
+    private void pedirCalendario() {
+        requestPermissions(new String[]{Manifest.permission.READ_CALENDAR, Manifest.permission.WRITE_CALENDAR},
+                REQ_CAL);
+    }
+
+    private void procesar(String dicho, boolean porVoz) {
+        if (Ajustes.tieneClave(this)) enviarAsistente(dicho, porVoz);
+        else abrirAnalizado(dicho, porVoz);
+    }
+
+    private void decir(String frase) {
+        try {
+            startForegroundService(Alarmas.intentVoz(this, -1, 1, frase));
+        } catch (RuntimeException e) {
+            android.util.Log.e("Yuyay", "No se pudo hablar", e);
+        }
+    }
+
+    private void enviarAsistente(String texto, boolean porVoz) {
+        if (!Ajustes.tieneClave(this)) {
+            irA(false, true);
+            abrirAjustes();
+            return;
+        }
+        Chat.agregar(this, true, texto);
+        pensando = true;
+        irA(false, true);
+        estado.setText("Yuyay está pensando…");
+        Asistente.preguntar(this, Chat.todos(this), res -> {
+            pensando = false;
+            estado.setText("Toca el micrófono y dime qué debo recordar");
+            if (res.error != null) {
+                Chat.agregar(this, false, res.error);
+                if (porVoz) decir(res.error);
+                pintarLista();
+                return;
+            }
+            List<String> hecho = Asistente.aplicar(this, res.acciones);
+            String mensaje = res.respuesta;
+            if (!hecho.isEmpty()) mensaje += "\n\n• " + String.join("\n• ", hecho);
+            Chat.agregar(this, false, mensaje);
+            if (porVoz) decir(res.respuesta);
+            pintarLista();
+        });
+    }
+
+    private View crearChat() {
+        chat = new LinearLayout(this);
+        chat.setOrientation(LinearLayout.VERTICAL);
+        chat.setVisibility(View.GONE);
+
+        LinearLayout entrada = new LinearLayout(this);
+        entrada.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout.LayoutParams lpE = new LinearLayout.LayoutParams(MP, WC);
+        lpE.topMargin = dp(10);
+        chat.addView(entrada, lpE);
+
+        chatCampo = new EditText(this);
+        chatCampo.setHint("Escribe o pregúntale a Yuyay");
+        chatCampo.setHintTextColor(t.suave);
+        chatCampo.setTextColor(t.tinta);
+        chatCampo.setTextSize(16);
+        chatCampo.setBackground(t.redondo(t.tarjeta, 14));
+        chatCampo.setPadding(dp(14), dp(12), dp(14), dp(12));
+        chatCampo.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE
+                | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
+        chatCampo.setMaxLines(5);
+        entrada.addView(chatCampo, new LinearLayout.LayoutParams(0, WC, 1f));
+
+        ImageButton enviar = new ImageButton(this);
+        enviar.setImageResource(R.drawable.ic_enviar);
+        enviar.setImageTintList(t.lista(t.sobreAcento));
+        enviar.setBackground(t.circulo(t.acento));
+        enviar.setContentDescription("Enviar");
+        enviar.setOnClickListener(v -> {
+            String s = chatCampo.getText().toString().trim();
+            if (s.isEmpty() || pensando) return;
+            chatCampo.setText("");
+            enviarAsistente(s, false);
+        });
+        LinearLayout.LayoutParams lpB = new LinearLayout.LayoutParams(dp(50), dp(50));
+        lpB.leftMargin = dp(8);
+        entrada.addView(enviar, lpB);
+
+        chatMensajes = new LinearLayout(this);
+        chatMensajes.setOrientation(LinearLayout.VERTICAL);
+        chatMensajes.setPadding(0, dp(12), 0, 0);
+        chat.addView(chatMensajes);
+        return chat;
+    }
+
+    private void pintarChat() {
+        chatMensajes.removeAllViews();
+        if (!Ajustes.tieneClave(this)) {
+            LinearLayout c = new LinearLayout(this);
+            c.setOrientation(LinearLayout.VERTICAL);
+            c.setBackground(t.redondo(t.tenue, 16));
+            c.setPadding(dp(16), dp(14), dp(16), dp(14));
+            c.addView(texto("Conecta Yuyay con Claude para conversar: pregúntale lo que guardaste, dicta varias"
+                    + " tareas a la vez o arma listas.", 15, t.tinta));
+            Button b = botonLleno("Agregar mi clave", v -> abrirAjustes());
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(WC, dp(46));
+            lp.topMargin = dp(10);
+            c.addView(b, lp);
+            chatMensajes.addView(c);
+        }
+        if (pensando) chatMensajes.addView(burbuja(false, "Pensando…"));
+        List<Chat.Mensaje> todos = Chat.todos(this);
+        for (int i = todos.size() - 1; i >= 0; i--) {
+            Chat.Mensaje m = todos.get(i);
+            chatMensajes.addView(burbuja(m.mio, m.texto));
+        }
+        if (todos.isEmpty() && Ajustes.tieneClave(this)) {
+            TextView v = texto("Prueba: «Recuérdame pagar la luz el viernes y comprar leche y pan»", 15, t.suave);
+            v.setGravity(Gravity.CENTER);
+            v.setPadding(dp(8), dp(16), dp(8), 0);
+            chatMensajes.addView(v);
+        } else if (!todos.isEmpty()) {
+            chatMensajes.addView(botonTexto("Borrar conversación", t.suave, v -> {
+                Chat.borrar(this);
+                pintarChat();
+            }));
+        }
+    }
+
+    private View burbuja(boolean mio, String s) {
+        TextView v = texto(s, 15, mio ? t.sobreAcento : t.tinta);
+        v.setBackground(t.redondo(mio ? t.acento : t.tarjeta, 16));
+        v.setPadding(dp(14), dp(10), dp(14), dp(10));
+        v.setMaxWidth(dp(290));
+        v.setTextIsSelectable(true);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(WC, WC);
+        lp.gravity = mio ? Gravity.END : Gravity.START;
+        lp.bottomMargin = dp(8);
+        v.setLayoutParams(lp);
+        return v;
+    }
+
+    private void abrirAjustes() {
+        LinearLayout c = cuerpoHoja("Ajustes");
+        c.addView(texto("Clave de Claude", 14, t.suave));
+        String actual = Ajustes.clave(this);
+        EditText clave = campo("", actual.isEmpty() ? "sk-ant-…"
+                : "Guardada (…" + actual.substring(Math.max(0, actual.length() - 4)) + ")");
+        clave.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD);
+        clave.setSingleLine(true);
+        clave.setTextSize(15);
+        LinearLayout.LayoutParams lpC = new LinearLayout.LayoutParams(MP, WC);
+        lpC.topMargin = dp(6);
+        c.addView(clave, lpC);
+        TextView ayuda = texto("Créala en console.anthropic.com, en API Keys. Se guarda solo en este celular.", 13,
+                t.suave);
+        ayuda.setPadding(0, dp(6), 0, dp(10));
+        c.addView(ayuda);
+        Switch google = interruptor("Copiar mis citas con hora a Google Calendar", Ajustes.copiarGoogle(this));
+        c.addView(google);
+        if (!Agenda.puedeLeer(this)) {
+            c.addView(botonTexto("Conectar Google Calendar", t.acento, v -> pedirCalendario()));
+        }
+        Dialog d = hoja(c);
+        c.addView(filaAcciones("Guardar", v -> d.dismiss(), v -> {
+            String nueva = clave.getText().toString().trim();
+            Ajustes.guardar(this, nueva.isEmpty() ? actual : nueva, google.isChecked());
+            d.dismiss();
+            Toast.makeText(this, "Ajustes guardados", Toast.LENGTH_SHORT).show();
+            pintarLista();
+        }));
+        mostrarHoja(d);
     }
 
     private View tarjeta(Recordatorio r, boolean enCalendario) {

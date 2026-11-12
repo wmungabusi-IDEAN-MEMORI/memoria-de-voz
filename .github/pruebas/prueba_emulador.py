@@ -87,9 +87,19 @@ def fallos():
 
 apk = sys.argv[1]
 adb("install", "-r", "-t", apk)
-for p in ["RECORD_AUDIO", "POST_NOTIFICATIONS"]:
+for p in ["RECORD_AUDIO", "POST_NOTIFICATIONS", "READ_CALENDAR", "WRITE_CALENDAR"]:
     adb("shell", "pm", "grant", PAQUETE, "android.permission." + p, check=False)
 adb("shell", "wm", "dismiss-keyguard", check=False)
+adb("shell", "content", "insert", "--uri",
+    "'content://com.android.calendar/calendars?caller_is_syncadapter=true&account_name=prueba&account_type=LOCAL'",
+    "--bind", "account_name:s:prueba", "--bind", "account_type:s:LOCAL", "--bind", "name:s:Prueba",
+    "--bind", "calendar_displayName:s:Prueba", "--bind", "calendar_access_level:i:700",
+    "--bind", "ownerAccount:s:prueba", "--bind", "visible:i:1", "--bind", "sync_events:i:1", check=False)
+inicio = (int(time.time()) + 2 * 86400) * 1000
+adb("shell", "content", "insert", "--uri", "content://com.android.calendar/events",
+    "--bind", "calendar_id:i:1", "--bind", "title:s:Dentista", "--bind", f"dtstart:l:{inicio}",
+    "--bind", f"dtend:l:{inicio + 3600000}", "--bind", "eventTimezone:s:UTC", check=False)
+print(adb("shell", "content", "query", "--uri", "content://com.android.calendar/events", "--projection", "title", check=False))
 adb("logcat", "-c", check=False)
 adb("shell", "am", "start", "-W", "-n", f"{PAQUETE}/.MainActivity")
 time.sleep(3)
@@ -143,6 +153,18 @@ adb("shell", "input", "swipe", "500", "1700", "500", "700", "400")
 captura("13_calendario_dia")
 tocar_texto("Mes siguiente")
 captura("14_calendario_mes_siguiente")
+
+for _ in range(3):
+    adb("shell", "input", "swipe", "500", "700", "500", "2000", "300")
+tocar_texto("Chat")
+captura("15_chat_sin_clave")
+tocar_texto("Ajustes")
+captura("16_ajustes")
+tocar_texto("Cancelar")
+adb("shell", "am", "start", "-a", "android.intent.action.SEND", "-t", "text/plain",
+    "--es", "android.intent.extra.TEXT", "'Comprar leche'", "-n", f"{PAQUETE}/.MainActivity", check=False)
+time.sleep(3)
+captura("17_compartido")
 
 adb("shell", "cmd", "uimode", "night", "yes", check=False)
 adb("shell", "am", "force-stop", PAQUETE)

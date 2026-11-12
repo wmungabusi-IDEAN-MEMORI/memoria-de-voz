@@ -28,6 +28,10 @@ jobs:
             app/src/main/java/com/yuyay/app/Fechas.java \
             .github/pruebas/PruebaParser.java
           java -cp /tmp/parser PruebaParser
+          curl -sSfL -o /tmp/json.jar https://repo1.maven.org/maven2/org/json/json/20240303/json-20240303.jar
+          javac -nowarn -encoding UTF-8 -cp /tmp/json.jar -d /tmp/parser \
+            app/src/main/java/com/yuyay/app/RespuestaIA.java .github/pruebas/PruebaIA.java
+          java -cp /tmp/parser:/tmp/json.jar PruebaIA
 
       - uses: gradle/actions/setup-gradle@v4
         with:

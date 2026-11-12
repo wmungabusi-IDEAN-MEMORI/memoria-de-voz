@@ -81,12 +81,12 @@ public class VozService extends Service implements TextToSpeech.OnInitListener {
 
         long id = intent == null ? -1 : intent.getLongExtra(Alarmas.EXTRA_ID, -1);
         int veces = intent == null ? 1 : intent.getIntExtra(Alarmas.EXTRA_VECES, 1);
+        String frase = intent == null ? null : intent.getStringExtra(Alarmas.EXTRA_FRASE);
         Recordatorio r = Almacen.buscar(this, id);
-        if (r == null) {
+        if (r == null && frase == null) {
             if (enCurso == 0 && pendientes.isEmpty()) terminar();
             return START_NOT_STICKY;
         }
-        String frase = intent.getStringExtra(Alarmas.EXTRA_FRASE);
         pendientes.add(new Pendiente(frase != null ? frase : Alarmas.frase(r), veces));
         if (listo) hablarPendientes();
         return START_NOT_STICKY;
