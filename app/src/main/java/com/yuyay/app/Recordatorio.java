@@ -1,4 +1,4 @@
-package com.memoriavoz.app;
+package com.yuyay.app;
 
 import java.time.Instant;
 import java.time.LocalDateTime;

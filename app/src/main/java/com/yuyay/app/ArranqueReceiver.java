@@ -1,4 +1,4 @@
-package com.memoriavoz.app;
+package com.yuyay.app;
 
 import android.content.BroadcastReceiver;
 import android.content.Context;

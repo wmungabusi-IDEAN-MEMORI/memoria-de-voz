@@ -3,15 +3,15 @@ plugins {
 }
 
 android {
-    namespace "com.memoriavoz.app"
+    namespace "com.yuyay.app"
     compileSdk 34
 
     defaultConfig {
-        applicationId "com.memoriavoz.app"
+        applicationId "com.yuyay.app"
         minSdk 26
         targetSdk 34
-        versionCode 3
-        versionName "1.2"
+        versionCode 1
+        versionName "1.0"
     }
 
     signingConfigs {

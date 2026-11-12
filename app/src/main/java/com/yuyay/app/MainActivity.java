@@ -1,4 +1,4 @@
-package com.memoriavoz.app;
+package com.yuyay.app;
 
 import android.Manifest;
 import android.animation.AnimatorSet;
@@ -58,7 +58,7 @@ import java.util.Locale;
 import java.util.Map;
 
 public class MainActivity extends Activity {
-    public static final String ACCION_NUEVA = "com.memoriavoz.app.NUEVA";
+    public static final String ACCION_NUEVA = "com.yuyay.app.NUEVA";
     private static final int REQ_MIC = 10;
     private static final int REQ_NOTIF = 11;
     private static final int MP = ViewGroup.LayoutParams.MATCH_PARENT;
@@ -95,6 +95,11 @@ public class MainActivity extends Activity {
     protected void onCreate(Bundle guardado) {
         super.onCreate(guardado);
         t = new Tema(this);
+        if (!BienvenidaActivity.vista(this)) {
+            startActivity(new Intent(this, BienvenidaActivity.class));
+            finish();
+            return;
+        }
         Alarmas.crearCanales(this);
 
         raizMarco = new FrameLayout(this);
@@ -108,9 +113,16 @@ public class MainActivity extends Activity {
         raizMarco.addView(scroll);
 
         raiz.addView(texto(Fechas.hoyLargo(LocalDate.now()), 14, t.suave));
-        TextView titulo = texto("Memoria de Voz", 30, t.tinta);
+        LinearLayout cabecera = new LinearLayout(this);
+        cabecera.setGravity(Gravity.CENTER_VERTICAL);
+        TextView titulo = texto("Yuyay", 32, t.tinta);
         titulo.setTypeface(Typeface.DEFAULT_BOLD);
-        raiz.addView(titulo);
+        cabecera.addView(titulo, new LinearLayout.LayoutParams(0, WC, 1f));
+        ImageView mascota = new ImageView(this);
+        mascota.setImageResource(R.drawable.ic_yuyay);
+        mascota.setContentDescription("Yuyay");
+        cabecera.addView(mascota, new LinearLayout.LayoutParams(dp(56), dp(56)));
+        raiz.addView(cabecera);
         resumen = texto("", 15, t.acento);
         resumen.setPadding(0, dp(2), 0, 0);
         raiz.addView(resumen);

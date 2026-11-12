@@ -7,8 +7,8 @@
         android:shortcutShortLabel="@string/atajo_corto"
         android:shortcutLongLabel="@string/atajo_largo">
         <intent
-            android:action="com.memoriavoz.app.NUEVA"
-            android:targetPackage="com.memoriavoz.app"
-            android:targetClass="com.memoriavoz.app.MainActivity" />
+            android:action="com.yuyay.app.NUEVA"
+            android:targetPackage="com.yuyay.app"
+            android:targetClass="com.yuyay.app.MainActivity" />
     </shortcut>
 </shortcuts>

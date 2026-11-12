@@ -3,7 +3,7 @@ MEMORIA DE VOZ - app Android
 1. Crea en github.com un repositorio PRIVADO llamado memoria-de-voz.
 2. Sube TODO el contenido de esta carpeta, incluida la carpeta .github.
 3. En la pestana Actions espera a que "Crear APK" termine en verde.
-4. En Releases, abre la ultima version desde tu celular y descarga MemoriaDeVoz.apk.
+4. En Releases, abre la ultima version desde tu celular y descarga Yuyay.apk.
 5. Instala el archivo y permite la instalacion desde el navegador si Android lo pide.
 
 Para actualizar la app, sube los archivos cambiados e instala el nuevo APK encima.

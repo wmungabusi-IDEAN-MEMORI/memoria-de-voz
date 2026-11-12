@@ -24,8 +24,8 @@ jobs:
         run: |
           mkdir -p /tmp/parser
           javac -nowarn -encoding UTF-8 -d /tmp/parser \
-            app/src/main/java/com/memoriavoz/app/ParserFechas.java \
-            app/src/main/java/com/memoriavoz/app/Fechas.java \
+            app/src/main/java/com/yuyay/app/ParserFechas.java \
+            app/src/main/java/com/yuyay/app/Fechas.java \
             .github/pruebas/PruebaParser.java
           java -cp /tmp/parser PruebaParser
 
@@ -36,7 +36,7 @@ jobs:
       - name: Compilar
         run: |
           gradle :app:assembleRelease --no-daemon --stacktrace
-          cp app/build/outputs/apk/release/app-release.apk MemoriaDeVoz.apk
+          cp app/build/outputs/apk/release/app-release.apk Yuyay.apk
 
       - name: Usar la app en un Android emulado
         run: |
@@ -64,7 +64,7 @@ jobs:
             adb shell settings put global $a 0
           done
           sleep 20
-          python3 .github/pruebas/prueba_emulador.py MemoriaDeVoz.apk
+          python3 .github/pruebas/prueba_emulador.py Yuyay.apk
 
       - name: Guardar capturas de la prueba
         if: always()
@@ -81,6 +81,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "v${{ github.run_number }}" MemoriaDeVoz.apk \
-            --title "Memoria de Voz ${{ github.run_number }}" \
-            --notes "Descarga MemoriaDeVoz.apk en tu celular e instalalo encima de la version anterior."
+          gh release create "v${{ github.run_number }}" Yuyay.apk \
+            --title "Yuyay ${{ github.run_number }}" \
+            --notes "Descarga Yuyay.apk en tu celular e instalalo encima de la version anterior."

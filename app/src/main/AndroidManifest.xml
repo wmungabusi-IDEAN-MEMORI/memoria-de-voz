@@ -24,7 +24,7 @@
     <application
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
-        android:label="Memoria de Voz"
+        android:label="Yuyay"
         android:theme="@style/Tema">
 
         <activity
@@ -38,6 +38,10 @@
             </intent-filter>
             <meta-data android:name="android.app.shortcuts" android:resource="@xml/shortcuts" />
         </activity>
+
+        <activity
+            android:name=".BienvenidaActivity"
+            android:exported="false" />
 
         <activity
             android:name=".AlarmaActivity"

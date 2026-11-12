@@ -6,7 +6,7 @@ import sys
 import time
 import xml.etree.ElementTree as ET
 
-PAQUETE = "com.memoriavoz.app"
+PAQUETE = "com.yuyay.app"
 CAPTURAS = "capturas"
 os.makedirs(CAPTURAS, exist_ok=True)
 
@@ -93,6 +93,9 @@ adb("shell", "wm", "dismiss-keyguard", check=False)
 adb("logcat", "-c", check=False)
 adb("shell", "am", "start", "-W", "-n", f"{PAQUETE}/.MainActivity")
 time.sleep(3)
+captura("00_bienvenida")
+tocar_texto("Comenzar")
+time.sleep(2)
 captura("01_inicio_vacio")
 
 agregar("Probar la app en 2 minutos", "02_rapido")
@@ -146,7 +149,7 @@ adb("shell", "am", "force-stop", PAQUETE)
 adb("shell", "am", "start", "-W", "-n", f"{PAQUETE}/.MainActivity")
 time.sleep(3)
 captura("10_modo_oscuro")
-adb("shell", "am", "start", "-W", "-a", "com.memoriavoz.app.NUEVA", "-n", f"{PAQUETE}/.MainActivity", check=False)
+adb("shell", "am", "start", "-W", "-a", "com.yuyay.app.NUEVA", "-n", f"{PAQUETE}/.MainActivity", check=False)
 time.sleep(3)
 captura("11_atajo_escuchando")
 

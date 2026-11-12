@@ -1,4 +1,4 @@
-package com.memoriavoz.app;
+package com.yuyay.app;
 
 import android.app.Activity;
 import android.graphics.Typeface;
@@ -43,11 +43,8 @@ public class AlarmaActivity extends Activity {
         raiz.setPadding(t.dp(28), t.dp(72), t.dp(28), t.dp(36));
 
         ImageView icono = new ImageView(this);
-        icono.setImageResource(R.drawable.ic_mic);
-        icono.setImageTintList(t.lista(t.sobreAcento));
-        icono.setBackground(t.circulo(t.acento));
-        icono.setPadding(t.dp(26), t.dp(26), t.dp(26), t.dp(26));
-        raiz.addView(icono, new LinearLayout.LayoutParams(t.dp(112), t.dp(112)));
+        icono.setImageResource(R.drawable.ic_yuyay);
+        raiz.addView(icono, new LinearLayout.LayoutParams(t.dp(140), t.dp(140)));
 
         TextView etiqueta = texto("Recordatorio", 16, t.suave);
         etiqueta.setPadding(0, t.dp(26), 0, t.dp(8));

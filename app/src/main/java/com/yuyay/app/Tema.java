@@ -1,4 +1,4 @@
-package com.memoriavoz.app;
+package com.yuyay.app;
 
 import android.content.Context;
 import android.content.res.ColorStateList;
@@ -15,15 +15,15 @@ final class Tema {
         densidad = c.getResources().getDisplayMetrics().density;
         boolean oscuro = (c.getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK)
                 == Configuration.UI_MODE_NIGHT_YES;
-        fondo = Color.parseColor(oscuro ? "#14181C" : "#F5F3EE");
-        tarjeta = Color.parseColor(oscuro ? "#1F252B" : "#FFFFFF");
-        tinta = Color.parseColor(oscuro ? "#ECEFF1" : "#1F2933");
-        suave = Color.parseColor(oscuro ? "#A3ADB6" : "#5F6A75");
-        acento = Color.parseColor(oscuro ? "#5EC9BC" : "#0F766E");
-        sobreAcento = Color.parseColor(oscuro ? "#0C1F1D" : "#FFFFFF");
-        tenue = Color.parseColor(oscuro ? "#1C3A37" : "#D9EFEC");
-        alerta = Color.parseColor(oscuro ? "#F08A7B" : "#BE3C2D");
-        linea = Color.parseColor(oscuro ? "#323A42" : "#E2DED5");
+        fondo = Color.parseColor(oscuro ? "#121829" : "#FBF6EF");
+        tarjeta = Color.parseColor(oscuro ? "#1C2338" : "#FFFFFF");
+        tinta = Color.parseColor(oscuro ? "#EEF0F7" : "#1B2A4E");
+        suave = Color.parseColor(oscuro ? "#A6AEC4" : "#5A6378");
+        acento = Color.parseColor(oscuro ? "#FFC94A" : "#2F3E8F");
+        sobreAcento = Color.parseColor(oscuro ? "#1B2A4E" : "#FFFFFF");
+        tenue = Color.parseColor(oscuro ? "#2A3352" : "#FFE9BD");
+        alerta = Color.parseColor(oscuro ? "#FF8A70" : "#C2462B");
+        linea = Color.parseColor(oscuro ? "#2E3756" : "#E6DFD3");
     }
 
     int dp(int v) {

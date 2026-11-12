@@ -1,4 +1,4 @@
-package com.memoriavoz.app;
+package com.yuyay.app;
 
 import android.app.AlarmManager;
 import android.app.Notification;
@@ -21,8 +21,8 @@ public final class Alarmas {
     public static final String EXTRA_VECES = "veces";
     public static final String EXTRA_FRASE = "frase";
     public static final String EXTRA_CUANDO = "cuando";
-    public static final String ACCION_POSPONER = "com.memoriavoz.app.POSPONER";
-    public static final String ACCION_LISTO = "com.memoriavoz.app.LISTO";
+    public static final String ACCION_POSPONER = "com.yuyay.app.POSPONER";
+    public static final String ACCION_LISTO = "com.yuyay.app.LISTO";
     public static final int MINUTOS_POSPONER = 10;
     private static final long GRACIA_MS = 120_000L;
 

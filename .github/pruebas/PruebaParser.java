@@ -1,4 +1,4 @@
-import com.memoriavoz.app.*;
+import com.yuyay.app.*;
 import java.time.*;
 
 public class PruebaParser {
