@@ -8,6 +8,7 @@ import android.content.Intent;
 public class ArranqueReceiver extends BroadcastReceiver {
     @Override
     public void onReceive(Context c, Intent intent) {
+        Festivos.sincronizar(c);
         Alarmas.reprogramarTodo(c);
     }
 }

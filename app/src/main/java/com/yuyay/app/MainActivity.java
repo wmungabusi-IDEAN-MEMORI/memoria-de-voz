@@ -84,6 +84,7 @@ public class MainActivity extends Activity {
     private View barraDeshacer;
     private boolean modoCalendario;
     private boolean modoChat;
+    private final java.util.Set<LocalDate> feriadosMes = new java.util.HashSet<>();
     private boolean pensando;
     private LinearLayout chat;
     private LinearLayout chatMensajes;
@@ -215,6 +216,7 @@ public class MainActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        Festivos.sincronizar(this);
         Alarmas.reprogramarTodo(this);
         pintarAvisoBateria();
         pintarLista();
@@ -803,9 +805,10 @@ public class MainActivity extends Activity {
             } else if (!r.tieneFecha()) {
                 notas.add(r);
             } else if (r.evento < ahora) {
-                pasados.add(r);
+                if (r.origen.isEmpty()) pasados.add(r);
             } else {
                 long d = ChronoUnit.DAYS.between(hoy, r.fechaEvento().toLocalDate());
+                if (!r.origen.isEmpty() && d > 7) continue;
                 (d == 0 ? deHoy : d == 1 ? deManana : d <= 7 ? semana : despues).add(r);
             }
         }
@@ -924,6 +927,10 @@ public class MainActivity extends Activity {
                 porDia.computeIfAbsent(d, k -> new ArrayList<>()).add(r);
             }
         }
+        feriadosMes.clear();
+        if (Ajustes.feriados(this)) {
+            for (Feriados.Dia f : Feriados.entre(inicio, fin, true, false)) feriadosMes.add(f.fecha);
+        }
         Map<LocalDate, List<Agenda.Evento>> eventos = new HashMap<>();
         for (Agenda.Evento e : Agenda.eventos(this, Recordatorio.aMillis(inicio.atStartOfDay()) - 86_400_000L,
                 Recordatorio.aMillis(fin.plusDays(1).atStartOfDay()) + 86_400_000L)) {
@@ -1003,6 +1010,7 @@ public class MainActivity extends Activity {
 
     private View celda(LocalDate d, LocalDate hoy, int cantidad, int deGoogle) {
         boolean elegido = d.equals(diaElegido);
+        boolean esFeriado = feriadosMes.contains(d);
         LinearLayout c = new LinearLayout(this);
         c.setOrientation(LinearLayout.VERTICAL);
         c.setGravity(Gravity.CENTER_HORIZONTAL);
@@ -1017,6 +1025,10 @@ public class MainActivity extends Activity {
 
         TextView n = texto(String.valueOf(d.getDayOfMonth()), 15, elegido ? t.sobreAcento : t.tinta);
         n.setGravity(Gravity.CENTER);
+        if (esFeriado && !elegido) {
+            n.setTextColor(t.alerta);
+            n.setTypeface(Typeface.DEFAULT_BOLD);
+        }
         if (elegido) n.setBackground(t.circulo(t.acento));
         else if (d.equals(hoy)) n.setBackground(t.circulo(t.tenue));
         c.addView(n, new LinearLayout.LayoutParams(dp(36), dp(36)));
@@ -1239,6 +1251,10 @@ public class MainActivity extends Activity {
         c.addView(ayuda);
         Switch google = interruptor("Copiar mis citas con hora a Google Calendar", Ajustes.copiarGoogle(this));
         c.addView(google);
+        Switch fer = interruptor("Feriados de Ecuador (aviso un día antes)", Ajustes.feriados(this));
+        c.addView(fer);
+        Switch esp = interruptor("Fechas especiales: Día de la Madre, del Padre, Navidad…", Ajustes.especiales(this));
+        c.addView(esp);
         if (!Agenda.puedeLeer(this)) {
             c.addView(botonTexto("Conectar Google Calendar", t.acento, v -> pedirCalendario()));
         }
@@ -1246,6 +1262,8 @@ public class MainActivity extends Activity {
         c.addView(filaAcciones("Guardar", v -> d.dismiss(), v -> {
             String nueva = clave.getText().toString().trim();
             Ajustes.guardar(this, nueva.isEmpty() ? actual : nueva, google.isChecked());
+            Ajustes.guardarFestivos(this, fer.isChecked(), esp.isChecked());
+            Festivos.sincronizar(this);
             d.dismiss();
             Toast.makeText(this, "Ajustes guardados", Toast.LENGTH_SHORT).show();
             pintarLista();
@@ -1318,6 +1336,7 @@ public class MainActivity extends Activity {
     }
 
     private void borrar(Recordatorio r) {
+        if (!r.origen.isEmpty()) Festivos.ocultar(this, r.id);
         Alarmas.cancelar(this, r);
         Almacen.borrar(this, r.id);
         pintarLista();

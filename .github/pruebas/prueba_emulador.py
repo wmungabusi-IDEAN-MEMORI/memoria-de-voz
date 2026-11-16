@@ -153,6 +153,10 @@ adb("shell", "input", "swipe", "500", "1700", "500", "700", "400")
 captura("13_calendario_dia")
 tocar_texto("Mes siguiente")
 captura("14_calendario_mes_siguiente")
+tocar_texto("25, 1 pendiente")
+time.sleep(1)
+adb("shell", "input", "swipe", "500", "1700", "500", "900", "400")
+captura("14b_navidad")
 
 for _ in range(3):
     adb("shell", "input", "swipe", "500", "700", "500", "2000", "300")

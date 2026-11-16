@@ -82,6 +82,7 @@ final class Asistente {
             o.put("hora", r.conHora ? r.fechaEvento().toLocalTime().format(HM) : JSONObject.NULL);
             o.put("repite", nombreRepite(r.repite));
             if (!r.lista.isEmpty()) o.put("lista", r.lista).put("hecho", r.hecho);
+            if (!r.origen.isEmpty()) o.put("origen", r.origen);
             memoria.put(o);
         }
         String calendario = "no conectado";
@@ -123,6 +124,8 @@ final class Asistente {
                 + "- Si hace una pregunta, responde con su MEMORIA y su CALENDARIO, sin acciones. Si no está, dilo.\n"
                 + "- Para borrar, marcar o mover usa el \"id\" exacto de MEMORIA. Si no está claro cuál es, pregunta "
                 + "y no hagas acciones.\n"
+                + "- Los elementos con \"origen\" feriado o especial son feriados de Ecuador y fechas especiales "
+                + "que Yuyay agrega sola; úsalos para responder preguntas sobre feriados.\n"
                 + "- No inventes datos.\n\n"
                 + "MEMORIA: " + memoria + "\n\nCALENDARIO (próximos 60 días): " + calendario;
     }

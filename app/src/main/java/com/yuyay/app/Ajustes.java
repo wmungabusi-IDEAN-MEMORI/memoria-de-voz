@@ -23,6 +23,18 @@ final class Ajustes {
         return p(c).getBoolean("copiar_google", true);
     }
 
+    static boolean feriados(Context c) {
+        return p(c).getBoolean("feriados", true);
+    }
+
+    static boolean especiales(Context c) {
+        return p(c).getBoolean("especiales", true);
+    }
+
+    static void guardarFestivos(Context c, boolean feriados, boolean especiales) {
+        p(c).edit().putBoolean("feriados", feriados).putBoolean("especiales", especiales).apply();
+    }
+
     static void guardar(Context c, String clave, boolean copiarGoogle) {
         p(c).edit().putString("clave_claude", clave.trim()).putBoolean("copiar_google", copiarGoogle).apply();
     }

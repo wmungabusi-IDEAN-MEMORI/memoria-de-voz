@@ -24,6 +24,7 @@ public final class Recordatorio {
     public long pospuesto;
     public String lista = "";
     public boolean hecho;
+    public String origen = "";
 
     public boolean tieneFecha() {
         return evento > 0;
@@ -95,7 +96,8 @@ public final class Recordatorio {
         return new JSONObject().put("id", id).put("texto", texto).put("evento", evento).put("conHora", conHora)
                 .put("diaAntes", diaAntes).put("mismoDia", mismoDia).put("exacta", exacta).put("creado", creado)
                 .put("ultimoAviso", ultimoAviso).put("repite", repite).put("diaBase", diaBase)
-                .put("pospuesto", pospuesto).put("lista", lista).put("hecho", hecho);
+                .put("pospuesto", pospuesto).put("lista", lista).put("hecho", hecho)
+                .put("origen", origen);
     }
 
     static Recordatorio deJson(JSONObject o) throws JSONException {
@@ -114,6 +116,7 @@ public final class Recordatorio {
         r.pospuesto = o.optLong("pospuesto", 0);
         r.lista = o.optString("lista", "");
         r.hecho = o.optBoolean("hecho", false);
+        r.origen = o.optString("origen", "");
         return r;
     }
 }
