@@ -1193,8 +1193,8 @@ public class MainActivity extends Activity {
             c.setOrientation(LinearLayout.VERTICAL);
             c.setBackground(t.redondo(t.tenue, 16));
             c.setPadding(dp(16), dp(14), dp(16), dp(14));
-            c.addView(texto("Conecta Yuyay con Claude para conversar: pregúntale lo que guardaste, dicta varias"
-                    + " tareas a la vez o arma listas.", 15, t.tinta));
+            c.addView(texto("Conecta Yuyay con la inteligencia artificial gratuita de Google (Gemini) para"
+                    + " conversar: pregúntale lo que guardaste, dicta varias tareas a la vez o arma listas.", 15, t.tinta));
             Button b = botonLleno("Agregar mi clave", v -> abrirAjustes());
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(WC, dp(46));
             lp.topMargin = dp(10);
@@ -1235,33 +1235,63 @@ public class MainActivity extends Activity {
 
     private void abrirAjustes() {
         LinearLayout c = cuerpoHoja("Ajustes");
-        c.addView(texto("Clave de Claude", 14, t.suave));
-        String actual = Ajustes.clave(this);
-        EditText clave = campo("", actual.isEmpty() ? "sk-ant-…"
-                : "Guardada (…" + actual.substring(Math.max(0, actual.length() - 4)) + ")");
+        final String[] prov = {Ajustes.proveedor(this)};
+
+        c.addView(texto("Inteligencia artificial", 14, t.suave));
+        LinearLayout chips = new LinearLayout(this);
+        chips.setPadding(0, dp(6), 0, dp(4));
+        c.addView(chips);
+        TextView etiqueta = texto("", 14, t.suave);
+        etiqueta.setPadding(0, dp(10), 0, 0);
+        c.addView(etiqueta);
+        EditText clave = campo("", "");
         clave.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD);
         clave.setSingleLine(true);
         clave.setTextSize(15);
         LinearLayout.LayoutParams lpC = new LinearLayout.LayoutParams(MP, WC);
         lpC.topMargin = dp(6);
         c.addView(clave, lpC);
-        TextView ayuda = texto("Créala en console.anthropic.com, en API Keys. Se guarda solo en este celular.", 13,
-                t.suave);
+        TextView ayuda = texto("", 13, t.suave);
         ayuda.setPadding(0, dp(6), 0, dp(10));
         c.addView(ayuda);
+
+        final Runnable[] pintar = new Runnable[1];
+        pintar[0] = () -> {
+            boolean gem = Ajustes.GEMINI.equals(prov[0]);
+            chips.removeAllViews();
+            chips.addView(chip("Gemini (gratis)", gem, v -> {
+                prov[0] = Ajustes.GEMINI;
+                pintar[0].run();
+            }));
+            chips.addView(chip("Claude (de pago)", !gem, v -> {
+                prov[0] = Ajustes.CLAUDE;
+                pintar[0].run();
+            }));
+            String guardada = Ajustes.claveDe(this, prov[0]);
+            etiqueta.setText(gem ? "Clave de Gemini" : "Clave de Claude");
+            clave.setText("");
+            clave.setHint(guardada.isEmpty() ? (gem ? "AIza…" : "sk-ant-…")
+                    : "Guardada (…" + guardada.substring(Math.max(0, guardada.length() - 4)) + ")");
+            ayuda.setText(gem
+                    ? "Gratis: créala en aistudio.google.com con tu cuenta de Google (Get API key). En el plan gratuito,"
+                    + " Google puede usar lo que envías para mejorar sus productos: no guardes contraseñas aquí."
+                    : "De pago: créala en console.anthropic.com, en API Keys. Más precisa y privada.");
+        };
+        pintar[0].run();
+
         Switch google = interruptor("Copiar mis citas con hora a Google Calendar", Ajustes.copiarGoogle(this));
         c.addView(google);
-        Switch fer = interruptor("Feriados de Ecuador (aviso un día antes)", Ajustes.feriados(this));
-        c.addView(fer);
-        Switch esp = interruptor("Fechas especiales: Día de la Madre, del Padre, Navidad…", Ajustes.especiales(this));
-        c.addView(esp);
         if (!Agenda.puedeLeer(this)) {
             c.addView(botonTexto("Conectar Google Calendar", t.acento, v -> pedirCalendario()));
         }
+        Switch fer = interruptor("Feriados de Ecuador (aviso un día antes)", Ajustes.feriados(this));
+        c.addView(fer);
+        Switch esp = interruptor("Fechas especiales: Día de la Madre, del Padre, Nochebuena…", Ajustes.especiales(this));
+        c.addView(esp);
         Dialog d = hoja(c);
         c.addView(filaAcciones("Guardar", v -> d.dismiss(), v -> {
-            String nueva = clave.getText().toString().trim();
-            Ajustes.guardar(this, nueva.isEmpty() ? actual : nueva, google.isChecked());
+            Ajustes.guardarIA(this, prov[0], clave.getText().toString());
+            Ajustes.guardarGoogle(this, google.isChecked());
             Ajustes.guardarFestivos(this, fer.isChecked(), esp.isChecked());
             Festivos.sincronizar(this);
             d.dismiss();
@@ -1294,6 +1324,7 @@ public class MainActivity extends Activity {
         info.addView(texto(r.texto, 16, t.tinta));
         if (r.tieneFecha()) {
             String meta = r.conHora ? Fechas.hora(r.fechaEvento().toLocalTime())
+                    : !r.origen.isEmpty() ? "Aviso un día antes"
                     : enCalendario ? "Sin hora" : Fechas.dia(r.fechaEvento().toLocalDate(), LocalDate.now());
             if (r.repite != ParserFechas.REPITE_NO) meta += " · " + Fechas.repeticion(r.repite);
             TextView f = texto(meta, 14, t.acento);

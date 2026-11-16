@@ -29,6 +29,7 @@ import org.json.JSONObject;
 /** Conversa con Claude para entender lo que la persona dice y convertirlo en acciones. */
 final class Asistente {
     private static final String MODELO = "claude-sonnet-5-5";
+    private static final String[] MODELOS_GEMINI = {"gemini-3.8-flash", "gemini-flash-latest"};
     private static final Locale ES = new Locale("es", "EC");
     private static final ExecutorService HILO = Executors.newSingleThreadExecutor();
     private static final DateTimeFormatter HM = DateTimeFormatter.ofPattern("HH:mm");
@@ -44,7 +45,8 @@ final class Asistente {
                 r = llamar(c, historial);
             } catch (Exception e) {
                 android.util.Log.e("Yuyay", "Fallo al hablar con Claude", e);
-                r = RespuestaIA.conError("No pude conectarme con Claude. Revisa tu internet e inténtalo otra vez.");
+                r = RespuestaIA.conError("No pude conectarme con " + Ajustes.nombreProveedor(c)
+                        + ". Revisa tu internet e inténtalo otra vez.");
             }
             RespuestaIA fin = r;
             principal.post(() -> listo.accept(fin));
@@ -151,25 +153,25 @@ final class Asistente {
         return a;
     }
 
-    private static RespuestaIA llamar(Context c, List<Chat.Mensaje> historial) throws Exception {
-        JSONObject cuerpo = new JSONObject()
-                .put("model", MODELO)
-                .put("max_tokens", 1500)
-                .put("system", instrucciones(c))
-                .put("messages", mensajes(historial));
-        HttpURLConnection con = (HttpURLConnection) new URL("https://api.anthropic.com/v1/messages").openConnection();
+    private static final class Http {
+        int codigo;
+        String texto;
+    }
+
+    private static Http enviar(String url, JSONObject cuerpo, String[][] cabeceras) throws Exception {
+        HttpURLConnection con = (HttpURLConnection) new URL(url).openConnection();
         con.setRequestMethod("POST");
         con.setConnectTimeout(15000);
         con.setReadTimeout(90000);
         con.setDoOutput(true);
         con.setRequestProperty("content-type", "application/json");
-        con.setRequestProperty("x-api-key", Ajustes.clave(c));
-        con.setRequestProperty("anthropic-version", "2023-06-01");
+        for (String[] h : cabeceras) con.setRequestProperty(h[0], h[1]);
         try (OutputStream o = con.getOutputStream()) {
             o.write(cuerpo.toString().getBytes(StandardCharsets.UTF_8));
         }
-        int codigo = con.getResponseCode();
-        InputStream in = codigo < 300 ? con.getInputStream() : con.getErrorStream();
+        Http r = new Http();
+        r.codigo = con.getResponseCode();
+        InputStream in = r.codigo < 300 ? con.getInputStream() : con.getErrorStream();
         ByteArrayOutputStream buf = new ByteArrayOutputStream();
         if (in != null) {
             byte[] b = new byte[8192];
@@ -177,8 +179,72 @@ final class Asistente {
             while ((n = in.read(b)) > 0) buf.write(b, 0, n);
             in.close();
         }
-        String texto = buf.toString("UTF-8");
+        r.texto = buf.toString("UTF-8");
         con.disconnect();
+        return r;
+    }
+
+    private static RespuestaIA llamar(Context c, List<Chat.Mensaje> historial) throws Exception {
+        return Ajustes.GEMINI.equals(Ajustes.proveedor(c)) ? llamarGemini(c, historial) : llamarClaude(c, historial);
+    }
+
+    private static RespuestaIA llamarGemini(Context c, List<Chat.Mensaje> historial) throws Exception {
+        JSONArray contenidos = new JSONArray();
+        JSONArray msgs = mensajes(historial);
+        for (int i = 0; i < msgs.length(); i++) {
+            JSONObject m = msgs.getJSONObject(i);
+            contenidos.put(new JSONObject()
+                    .put("role", "user".equals(m.getString("role")) ? "user" : "model")
+                    .put("parts", new JSONArray().put(new JSONObject().put("text", m.getString("content")))));
+        }
+        JSONObject cuerpo = new JSONObject()
+                .put("systemInstruction", new JSONObject()
+                        .put("parts", new JSONArray().put(new JSONObject().put("text", instrucciones(c)))))
+                .put("contents", contenidos)
+                .put("generationConfig", new JSONObject().put("responseMimeType", "application/json")
+                        .put("maxOutputTokens", 2048));
+        Http h = null;
+        for (String modelo : MODELOS_GEMINI) {
+            h = enviar("https://generativelanguage.googleapis.com/v1beta/models/" + modelo + ":generateContent",
+                    cuerpo, new String[][]{{"x-goog-api-key", Ajustes.clave(c)}});
+            if (h.codigo != 404) break;
+        }
+        String detalle = h.texto.toLowerCase(Locale.ROOT);
+        if (h.codigo == 400 && detalle.contains("api key") || h.codigo == 401 || h.codigo == 403) {
+            return RespuestaIA.conError("Tu clave de Gemini no es válida. Revísala en Ajustes.");
+        }
+        if (h.codigo == 429) {
+            return RespuestaIA.conError("Llegaste al límite gratuito de Gemini por ahora. Espera un momento e "
+                    + "inténtalo otra vez.");
+        }
+        if (h.codigo >= 300) {
+            android.util.Log.e("Yuyay", "Gemini respondió " + h.codigo + ": " + h.texto);
+            return RespuestaIA.conError("Gemini no pudo responder (error " + h.codigo + "). Inténtalo otra vez.");
+        }
+        StringBuilder s = new StringBuilder();
+        JSONArray cand = new JSONObject(h.texto).optJSONArray("candidates");
+        JSONObject primero = cand == null ? null : cand.optJSONObject(0);
+        JSONObject cont = primero == null ? null : primero.optJSONObject("content");
+        JSONArray partes = cont == null ? null : cont.optJSONArray("parts");
+        for (int i = 0; partes != null && i < partes.length(); i++) {
+            JSONObject p = partes.getJSONObject(i);
+            if (!p.optBoolean("thought", false)) s.append(p.optString("text"));
+        }
+        RespuestaIA r = RespuestaIA.interpretar(s.toString());
+        if (r.respuesta.isEmpty()) r.respuesta = r.acciones.isEmpty() ? "No entendí bien, ¿me lo repites?" : "Listo.";
+        return r;
+    }
+
+    private static RespuestaIA llamarClaude(Context c, List<Chat.Mensaje> historial) throws Exception {
+        JSONObject cuerpo = new JSONObject()
+                .put("model", MODELO)
+                .put("max_tokens", 1500)
+                .put("system", instrucciones(c))
+                .put("messages", mensajes(historial));
+        Http h = enviar("https://api.anthropic.com/v1/messages", cuerpo,
+                new String[][]{{"x-api-key", Ajustes.clave(c)}, {"anthropic-version", "2023-06-01"}});
+        int codigo = h.codigo;
+        String texto = h.texto;
         if (codigo == 401) return RespuestaIA.conError("Tu clave de Claude no es válida. Revísala en Ajustes.");
         if (codigo == 429) return RespuestaIA.conError("Claude está recibiendo demasiadas solicitudes. Espera un momento.");
         if (codigo >= 300) {
